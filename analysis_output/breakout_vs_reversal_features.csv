@@ -1,0 +1,5 @@
+﻿trade_outcome,n_events,trailing_return_pct_mean,trailing_return_pct_median,volume_ratio_vs_avg_mean,volume_ratio_vs_avg_median,pct_below_52w_high_mean,pct_below_52w_high_median,pct_vs_ma25_mean,pct_vs_ma25_median,pct_vs_ma75_mean,pct_vs_ma75_median,pct_vs_ma200_mean,pct_vs_ma200_median,ma25_above_ma75_mean,ma25_above_ma75_median,rsi14_mean,rsi14_median,is_52w_high_break_rate_pct
+stop_loss,26618,10.49,7.39,1.13,0.95,4.11,4.3,6.56,4.72,14.89,11.33,30.29,23.7,0.91,1.0,62.81,63.22,20.6
+take_profit,15892,10.77,8.07,1.16,0.99,3.84,3.95,6.61,4.76,14.67,11.96,32.35,27.55,0.91,1.0,63.27,63.37,21.2
+timeout_loss,19964,3.46,2.15,1.06,0.91,4.81,4.95,2.31,1.57,5.51,3.95,12.53,9.77,0.77,1.0,57.39,56.95,10.3
+timeout_win,44298,4.61,3.64,1.03,0.89,4.42,4.36,2.74,2.16,6.24,4.84,15.33,12.83,0.78,1.0,58.79,58.9,12.4
