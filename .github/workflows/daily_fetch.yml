@@ -39,6 +39,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add market_data.sqlite3 analysis_output/screening_latest.csv analysis_output/screening_*.csv web/
+          git add -A .
           git diff --quiet --cached || git commit -m "Update market data, screening, and web data ($(date -u +'%Y-%m-%d'))"
           git push
