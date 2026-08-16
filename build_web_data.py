@@ -32,7 +32,7 @@ import pandas as pd
 from analyze_new_highs import DB_PATH
 
 ANALYSIS_OUTPUT_DIR = Path(__file__).parent / "analysis_output"
-WEB_DATA_DIR = Path(__file__).parent / "web" / "data"
+WEB_DATA_DIR = Path(__file__).parent / "docs" / "data"
 WEB_HISTORY_DIR = WEB_DATA_DIR / "history"
 
 DEFAULT_LOOKBACK_DAYS = 60

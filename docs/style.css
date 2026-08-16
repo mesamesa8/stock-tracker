@@ -1,0 +1,359 @@
+/* ==========================================================================
+   高値ブレイク板 - スタイル
+   世界観: 夜間(引け後〜寄り前)に見る、静かな取引端末/株価ボード。
+   赤=上昇(陽)・青=下落(陰)という日本の相場伝統配色を機能の核として使う。
+   数値は等幅フォントで揃え、台帳のような精度を出す。
+   ========================================================================== */
+
+:root {
+  --bg: #14161c;
+  --surface: #1d2029;
+  --surface-raised: #242835;
+  --border: #2b2f3c;
+
+  --text: #e8e9ed;
+  --text-muted: #8b90a0;
+  --text-faint: #5b6070;
+
+  --up: #e0483e;      /* 陽線・上昇 */
+  --up-bg: rgba(224, 72, 62, 0.12);
+  --down: #4d8fd1;    /* 陰線・下落 */
+  --down-bg: rgba(77, 143, 209, 0.12);
+  --accent: #c9a227;  /* スコア・強調用のゴールド */
+
+  --radius: 14px;
+  --font-body: -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  --font-num: "JetBrains Mono", "SFMono-Regular", Consolas, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- ヘッダー ---------- */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: max(14px, env(safe-area-inset-top)) 16px 10px;
+  background: linear-gradient(180deg, var(--bg) 70%, rgba(20, 22, 28, 0.92));
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.info-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.updated-at {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- タブ ---------- */
+
+.tabbar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+  background: var(--bg);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn.is-active {
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+
+.history-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg);
+}
+
+.history-picker-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+#dateSelect {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-num);
+  font-size: 13px;
+}
+
+/* ---------- 一覧 ---------- */
+
+.list-root {
+  padding: 10px 12px 32px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.state-msg {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 40px 0;
+}
+
+.stock-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* スコア順位を左の縦バーの濃さで表す */
+.stock-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  opacity: var(--rank-opacity, 0.3);
+}
+
+.stock-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.stock-name-block {
+  min-width: 0;
+}
+
+.stock-code {
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-name {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stock-sector {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.stock-score {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.stock-score-value {
+  font-family: var(--font-num);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-score-label {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.03em;
+}
+
+.stock-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.metric {
+  background: var(--surface-raised);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.metric-label {
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+.metric-value {
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 履歴表示: 価格推移 ---------- */
+
+.perf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.perf-pill {
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 9px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.perf-pill.is-up { color: var(--up); background: var(--up-bg); }
+.perf-pill.is-down { color: var(--down); background: var(--down-bg); }
+.perf-pill.is-flat { color: var(--text-muted); background: var(--surface-raised); }
+
+.sparkline {
+  flex: 1;
+  height: 28px;
+}
+
+.sparkline path.line { fill: none; stroke-width: 1.6; }
+.sparkline path.fill { stroke: none; }
+
+.perf-current {
+  font-family: var(--font-num);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ---------- 情報シート ---------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  z-index: 100;
+}
+
+.sheet {
+  width: 100%;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+
+.sheet-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.sheet p {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.sheet code {
+  font-family: var(--font-num);
+  background: var(--surface-raised);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.sheet-note {
+  font-size: 12px !important;
+}
+
+.sheet-close {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stock-card { transition: transform 0.15s ease; }
+  .stock-card:active { transform: scale(0.99); }
+}

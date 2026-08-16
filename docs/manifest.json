@@ -1,0 +1,9 @@
+{
+  "name": "高値ブレイク板",
+  "short_name": "高値板",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#14161c",
+  "theme_color": "#14161c",
+  "icons": []
+}
