@@ -23,6 +23,7 @@
 | `backtest_rule.py` | ③発見したルール(高値更新回数の上限・適度な上昇率の範囲)をフィルターとして適用し、フィルターなしの場合と成績を比較するバックテストスクリプト |
 | `optimize_tp_sl.py` | ③利確ライン・損切りラインの組み合わせを総当たりで試し、最も平均リターンが良い設定を探す最適化スクリプト |
 | `daily_screener.py` | ③毎日のひけ後に、ルールに合致する銘柄を期待値順にリストアップするスクリーニングスクリプト(GitHub Actionsで自動実行) |
+| `build_web_data.py` | Webアプリ表示用に、過去60日分のスクリーニング結果+株価推移を軽量JSONとして書き出すスクリプト(GitHub Actionsで自動実行) |
 | `TRADING_RULE.md` | ②③で確立したトレードルールをまとめた文書 |
 | `HOW_TO_TRADE.md` | 実際の売買時にルールをどうチェックするかの手順書 |
 | `.github/workflows/daily_fetch.yml` | GitHub Actionsでの自動実行設定 |
@@ -330,6 +331,21 @@ python3 daily_screener.py --top 30   # 上位30件だけ表示
 保存され、GitHub Actionsではリポジトリに自動コミットされます。
 
 実際の売買判断の手順は `HOW_TO_TRADE.md` を参照してください。
+
+## Webアプリ用データの生成(build_web_data.py)
+
+スマホ用Webアプリの表示に使う、軽量なJSONファイルを生成します。
+GitHub Actionsで`daily_screener.py`の後に自動実行されるため、
+通常は手元で実行する必要はありません。
+
+```bash
+python3 build_web_data.py
+python3 build_web_data.py --days 60   # 遡る日数を変更する場合(デフォルト60日)
+```
+
+- 直近60日分の`screening_YYYY-MM-DD.csv`だけを対象にする(60日より古いものは自動的に無視・削除されるため、データ量は増え続けず一定に保たれる)
+- 各銘柄について、ランキングに載った日から現在までの株価推移(`price_history`)と、現在価格・現在の騰落率(`current_close` / `current_pct_change`)を計算
+- 出力先: `web/data/latest.json`(最新日)、`web/data/history/YYYY-MM-DD.json`(日ごとの履歴)、`web/data/history/index.json`(閲覧可能な日付一覧)
 
 ## 次のステップ(②③に向けて)
 
