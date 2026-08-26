@@ -23,9 +23,15 @@
   <button class="tab-btn" id="tabHistory" role="tab" aria-selected="false">履歴</button>
 </nav>
 
-<div class="history-picker" id="historyPicker" hidden>
-  <label for="dateSelect" class="history-picker-label">日付を選択</label>
-  <select id="dateSelect"></select>
+<div class="toolbar">
+  <div class="history-picker" id="historyPicker" hidden>
+    <label for="dateSelect" class="toolbar-label">日付</label>
+    <select id="dateSelect"></select>
+  </div>
+  <div class="sort-picker">
+    <label for="sortSelect" class="toolbar-label">並び替え</label>
+    <select id="sortSelect"></select>
+  </div>
 </div>
 
 <main id="listRoot" class="list-root">
@@ -46,8 +52,17 @@
       将来の値動きを保証するものではありません。売買の最終判断は、
       ご自身の責任で行ってください。
     </p>
+    <h3 class="sheet-subtitle">総合スコアの算出式</h3>
+    <p>
+      <span class="formula">総合スコア = 期待値 + 業種調整 × 0.5 + チャートの締まり具合</span>
+    </p>
+    <ul class="sheet-list">
+      <li><strong>期待値</strong>: 「高値更新回数×直前の値上がり率」の12パターン別の過去の平均リターン。件数が少ないマスは全体平均へ寄せて補正済み</li>
+      <li><strong>業種調整</strong>: 業種ごとの過去の実績差。相場環境に依存する可能性があるため、影響は半分の重みに抑えている</li>
+      <li><strong>チャートの締まり具合</strong>: 直前の値幅が狭い(タイトな)銘柄ほど加点</li>
+    </ul>
     <p class="sheet-note">
-      スコアの内訳・売買時のチェック手順は、リポジトリ内の
+      詳しい検証内容・売買時のチェック手順は、リポジトリ内の
       <code>TRADING_RULE.md</code> / <code>HOW_TO_TRADE.md</code> を
       参照してください。
     </p>

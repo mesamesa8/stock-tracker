@@ -6,10 +6,28 @@
 
 const DATA_BASE = "data";
 
+const SORT_OPTIONS_TODAY = [
+  { value: "score_desc", label: "総合スコアが高い順" },
+  { value: "win_rate_desc", label: "期待勝率が高い順" },
+  { value: "expected_return_desc", label: "期待値が高い順" },
+  { value: "code_asc", label: "銘柄コード順" },
+];
+
+const SORT_OPTIONS_HISTORY = [
+  { value: "score_desc", label: "総合スコアが高い順" },
+  { value: "pct_change_desc", label: "値上がり率が大きい順" },
+  { value: "pct_change_asc", label: "値下がり率が大きい順" },
+  { value: "days_elapsed_desc", label: "経過日数が長い順" },
+  { value: "win_rate_desc", label: "期待勝率が高い順" },
+  { value: "code_asc", label: "銘柄コード順" },
+];
+
 const state = {
   mode: "today", // "today" | "history"
+  sortBy: "score_desc",
   historyIndex: null,
   historyCache: {},
+  currentData: null,
 };
 
 const els = {
@@ -19,6 +37,7 @@ const els = {
   tabHistory: document.getElementById("tabHistory"),
   historyPicker: document.getElementById("historyPicker"),
   dateSelect: document.getElementById("dateSelect"),
+  sortSelect: document.getElementById("sortSelect"),
   infoBtn: document.getElementById("infoBtn"),
   infoSheetBackdrop: document.getElementById("infoSheetBackdrop"),
   infoSheetClose: document.getElementById("infoSheetClose"),
@@ -28,6 +47,7 @@ init();
 
 async function init() {
   bindEvents();
+  populateSortOptions("today");
   await loadToday();
 }
 
@@ -35,11 +55,25 @@ function bindEvents() {
   els.tabToday.addEventListener("click", () => switchMode("today"));
   els.tabHistory.addEventListener("click", () => switchMode("history"));
   els.dateSelect.addEventListener("change", (e) => loadHistoryDate(e.target.value));
+  els.sortSelect.addEventListener("change", (e) => {
+    state.sortBy = e.target.value;
+    if (state.currentData) renderStocks(state.currentData, { showPerformance: state.mode === "history" });
+  });
   els.infoBtn.addEventListener("click", () => (els.infoSheetBackdrop.hidden = false));
   els.infoSheetClose.addEventListener("click", () => (els.infoSheetBackdrop.hidden = true));
   els.infoSheetBackdrop.addEventListener("click", (e) => {
     if (e.target === els.infoSheetBackdrop) els.infoSheetBackdrop.hidden = true;
   });
+}
+
+function populateSortOptions(mode) {
+  const options = mode === "history" ? SORT_OPTIONS_HISTORY : SORT_OPTIONS_TODAY;
+  els.sortSelect.innerHTML = options.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+  // 今のタブで選べない並び替えを選んでいた場合は、既定(スコア順)に戻す
+  if (!options.some((o) => o.value === state.sortBy)) {
+    state.sortBy = "score_desc";
+  }
+  els.sortSelect.value = state.sortBy;
 }
 
 async function switchMode(mode) {
@@ -49,6 +83,7 @@ async function switchMode(mode) {
   els.tabHistory.classList.toggle("is-active", mode === "history");
   els.tabHistory.setAttribute("aria-selected", String(mode === "history"));
   els.historyPicker.hidden = mode !== "history";
+  populateSortOptions(mode);
 
   if (mode === "today") {
     await loadToday();
@@ -67,6 +102,7 @@ async function loadToday() {
   showMessage("読み込み中…");
   try {
     const data = await fetchJson(`${DATA_BASE}/latest.json`);
+    state.currentData = data;
     renderStocks(data, { showPerformance: false });
     setUpdatedAt(data);
   } catch (err) {
@@ -102,6 +138,7 @@ async function loadHistoryDate(dateStr) {
       data = await fetchJson(`${DATA_BASE}/history/${dateStr}.json`);
       state.historyCache[dateStr] = data;
     }
+    state.currentData = data;
     renderStocks(data, { showPerformance: true });
     setUpdatedAt(data);
   } catch (err) {
@@ -118,8 +155,30 @@ function showMessage(msg) {
   els.listRoot.innerHTML = `<p class="state-msg">${escapeHtml(msg)}</p>`;
 }
 
+function sortStocks(stocks, sortBy) {
+  const withDays = stocks.map((s) => ({ ...s, _daysElapsed: daysElapsed(s) }));
+
+  const comparators = {
+    score_desc: (a, b) => (b.composite_score ?? -999) - (a.composite_score ?? -999),
+    win_rate_desc: (a, b) => (b.expected_win_rate_pct ?? -999) - (a.expected_win_rate_pct ?? -999),
+    expected_return_desc: (a, b) => (b.expected_return_pct ?? -999) - (a.expected_return_pct ?? -999),
+    pct_change_desc: (a, b) => (b.current_pct_change ?? -999) - (a.current_pct_change ?? -999),
+    pct_change_asc: (a, b) => (a.current_pct_change ?? 999) - (b.current_pct_change ?? 999),
+    days_elapsed_desc: (a, b) => (b._daysElapsed ?? -1) - (a._daysElapsed ?? -1),
+    code_asc: (a, b) => String(a.code).localeCompare(String(b.code)),
+  };
+
+  const cmp = comparators[sortBy] || comparators.score_desc;
+  return withDays.sort(cmp);
+}
+
+function daysElapsed(s) {
+  if (!s.price_history || s.price_history.length === 0) return 0;
+  return s.price_history.length - 1; // 載った日を0日目として数える(営業日ベース)
+}
+
 function renderStocks(data, { showPerformance }) {
-  const stocks = (data.stocks || []).slice().sort((a, b) => (b.composite_score ?? -999) - (a.composite_score ?? -999));
+  const stocks = sortStocks((data.stocks || []).slice(), state.sortBy);
 
   if (stocks.length === 0) {
     showMessage("この日はルールに合致する銘柄がありませんでした。");
@@ -148,6 +207,11 @@ function renderCard(s, maxScore, showPerformance) {
         </div>
       </div>
 
+      <div class="score-breakdown">
+        期待値 ${formatSigned(s.expected_return_pct)} + 業種 ${formatSigned(s.sector_adjustment_pct)} + 締まり ${formatSigned(s.tightness_bonus_pct)}
+        ${s.expected_value_sample_size != null ? `<span class="score-breakdown-n">(n=${s.expected_value_sample_size})</span>` : ""}
+      </div>
+
       <div class="stock-metrics">
         <div class="metric">
           <div class="metric-label">終値</div>
@@ -173,12 +237,16 @@ function renderPerformance(s) {
   const pctClass = pct == null || Math.abs(pct) < 0.05 ? "is-flat" : pct > 0 ? "is-up" : "is-down";
   const pctLabel = pct == null ? "-" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
   const spark = renderSparkline(s.price_history, pctClass);
+  const days = daysElapsed(s);
 
   return `
     <div class="perf-row">
       <span class="perf-pill ${pctClass}">${pctLabel}</span>
       <div class="sparkline">${spark}</div>
-      <span class="perf-current">${formatYen(s.current_close)}円</span>
+      <div class="perf-right">
+        <span class="perf-current">${formatYen(s.current_close)}円</span>
+        <span class="perf-days">経過${days}営業日</span>
+      </div>
     </div>
   `;
 }
@@ -217,6 +285,11 @@ function renderSparkline(history, pctClass) {
 function formatNum(v) {
   if (v == null || Number.isNaN(v)) return "-";
   return v.toFixed(2);
+}
+
+function formatSigned(v) {
+  if (v == null || Number.isNaN(v)) return "-";
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
 }
 
 function formatYen(v) {

@@ -24,6 +24,7 @@
 | `optimize_tp_sl.py` | ③利確ライン・損切りラインの組み合わせを総当たりで試し、最も平均リターンが良い設定を探す最適化スクリプト |
 | `daily_screener.py` | ③毎日のひけ後に、ルールに合致する銘柄を期待値順にリストアップするスクリーニングスクリプト(GitHub Actionsで自動実行) |
 | `build_web_data.py` | Webアプリ表示用に、過去60日分のスクリーニング結果+株価推移を軽量JSONとして書き出すスクリプト(GitHub Actionsで自動実行) |
+| `docs/` | GitHub Pagesで公開するスマホ用Webアプリ本体(HTML/CSS/JS) |
 | `TRADING_RULE.md` | ②③で確立したトレードルールをまとめた文書 |
 | `HOW_TO_TRADE.md` | 実際の売買時にルールをどうチェックするかの手順書 |
 | `.github/workflows/daily_fetch.yml` | GitHub Actionsでの自動実行設定 |
@@ -345,7 +346,31 @@ python3 build_web_data.py --days 60   # 遡る日数を変更する場合(デフ
 
 - 直近60日分の`screening_YYYY-MM-DD.csv`だけを対象にする(60日より古いものは自動的に無視・削除されるため、データ量は増え続けず一定に保たれる)
 - 各銘柄について、ランキングに載った日から現在までの株価推移(`price_history`)と、現在価格・現在の騰落率(`current_close` / `current_pct_change`)を計算
-- 出力先: `web/data/latest.json`(最新日)、`web/data/history/YYYY-MM-DD.json`(日ごとの履歴)、`web/data/history/index.json`(閲覧可能な日付一覧)
+- 出力先: `docs/data/latest.json`(最新日)、`docs/data/history/YYYY-MM-DD.json`(日ごとの履歴)、`docs/data/history/index.json`(閲覧可能な日付一覧)
+
+## スマホ用Webアプリ(docs/)
+
+`docs/`フォルダに、スマホで見られる一覧画面(HTML/CSS/JavaScript、
+フレームワーク不使用)が入っています。GitHub Pagesで無料公開できます。
+
+### GitHub Pagesの設定手順(初回のみ)
+
+1. GitHubのリポジトリページで `Settings` タブを開く
+2. 左メニューの `Pages` をクリック
+3. `Build and deployment` の `Source` を `Deploy from a branch` に設定
+4. `Branch` を `main` 、フォルダを **`/docs`** に設定して `Save`
+5. 数分待つと、`https://<ユーザー名>.github.io/<リポジトリ名>/` でアクセスできるようになる
+
+以降は、GitHub Actionsが毎日`docs/data/`以下のJSONを自動更新するので、
+特別な操作なしにページの中身も毎日更新されます。
+
+### 画面の内容
+
+- **本日の候補**タブ: `daily_screener.py`が抽出した当日の候補銘柄を、総合スコアの高い順に一覧表示
+- **履歴**タブ: 過去(最大60日分)の各日の候補銘柄一覧を、日付を選んで表示。各銘柄について、載った日からの株価推移をスパークライン(小さな折れ線グラフ)・騰落率・経過営業日数で確認できる
+- **並び替え**: 総合スコア順に加えて、値上がり率順・値下がり率順(履歴タブのみ)・期待勝率順・経過日数順・銘柄コード順を選べる
+- 各銘柄カードに、総合スコアの内訳(期待値・業種調整・チャートの締まり具合)を常時表示
+- 画面右上の「?」ボタンから、免責事項とスコア算出式の説明を表示
 
 ## 次のステップ(②③に向けて)
 

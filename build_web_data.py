@@ -68,6 +68,18 @@ def load_price_history(conn: sqlite3.Connection, codes: list[str], start_date: s
     return pd.read_sql(query, conn, params=(*codes, start_date, end_date))
 
 
+def safe_num(v):
+    """NaN/NoneをJSON互換のNoneに変換する(NaNのままjson.dumpすると不正なJSONになるため)。"""
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return v
+
+
 def build_day_json(entry_date: str, screening_df: pd.DataFrame, price_history: pd.DataFrame) -> dict:
     stocks = []
     for _, row in screening_df.iterrows():
@@ -78,7 +90,7 @@ def build_day_json(entry_date: str, screening_df: pd.DataFrame, price_history: p
         trajectory = []
         for _, h in hist.iterrows():
             pct = round((h["close"] - entry_close) / entry_close * 100, 2) if entry_close else None
-            trajectory.append([h["date"], round(float(h["close"]), 2), pct])
+            trajectory.append([h["date"], safe_num(round(float(h["close"]), 2)), safe_num(pct)])
 
         # アプリ側からすぐ参照できるよう、直近の価格・騰落率をトップレベルにも複製しておく
         if trajectory:
@@ -93,13 +105,16 @@ def build_day_json(entry_date: str, screening_df: pd.DataFrame, price_history: p
                 "sector33_name": row.get("sector33_name"),
                 "entry_close": entry_close,
                 "current_date": current_date,
-                "current_close": current_close,
-                "current_pct_change": current_pct_change,
-                "composite_score": row.get("composite_score"),
-                "expected_win_rate_pct": row.get("expected_win_rate_pct"),
-                "expected_return_pct": row.get("expected_return_pct"),
-                "stop_loss_price": row.get("stop_loss_price"),
-                "take_profit_price": row.get("take_profit_price"),
+                "current_close": safe_num(current_close),
+                "current_pct_change": safe_num(current_pct_change),
+                "composite_score": safe_num(row.get("composite_score")),
+                "expected_win_rate_pct": safe_num(row.get("expected_win_rate_pct")),
+                "expected_return_pct": safe_num(row.get("expected_return_pct")),
+                "sector_adjustment_pct": safe_num(row.get("sector_adjustment_pct")),
+                "tightness_bonus_pct": safe_num(row.get("tightness_bonus_pct")),
+                "expected_value_sample_size": safe_num(row.get("expected_value_sample_size")),
+                "stop_loss_price": safe_num(row.get("stop_loss_price")),
+                "take_profit_price": safe_num(row.get("take_profit_price")),
                 "price_history": trajectory,
             }
         )
