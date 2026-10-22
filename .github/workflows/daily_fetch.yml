@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run tests
+        run: python -m unittest discover tests
+
       - name: Run daily fetch script
         env:
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
@@ -34,6 +37,9 @@ jobs:
 
       - name: Build web data (60-day rolling window)
         run: python build_web_data.py
+
+      - name: Compact database (drop redundant index, VACUUM)
+        run: python db_maintenance.py compact
 
       - name: Commit updated database, screening results, and web data
         run: |
