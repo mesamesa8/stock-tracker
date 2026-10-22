@@ -65,5 +65,26 @@ class CompactTest(unittest.TestCase):
         self.assertEqual(count, 50)
 
 
+class VerifyTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmp.name) / "test.sqlite3"
+        _make_old_db(self.db_path, n_codes=10, n_days=5)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_count_stock_rows(self):
+        self.assertEqual(db_maintenance.count_stock_rows(self.db_path), 50)
+
+    def test_verify_ok_when_rows_not_decreased(self):
+        self.assertEqual(db_maintenance.verify(self.db_path, min_rows=50), [])
+
+    def test_verify_fails_when_rows_decreased(self):
+        problems = db_maintenance.verify(self.db_path, min_rows=51)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("50", problems[0])
+
+
 if __name__ == "__main__":
     unittest.main()

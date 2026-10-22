@@ -16,5 +16,12 @@ venv/
 .DS_Store
 Thumbs.db
 
-# 注意: market_data.sqlite3 / analysis_output/ / docs/data/ は
+# DBはGitHub Releases(タグ db-latest)で管理する。README「DBファイルの取得」参照
+market_data.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3.gz
+.db_download/
+
+# 注意: analysis_output/ / docs/data/ は
 # GitHub Actions が毎日コミットする成果物なので、ここに書かないこと
