@@ -27,8 +27,16 @@ const SORT_OPTIONS_HISTORY = [
   { value: "code_asc", label: "銘柄コード順" },
 ];
 
+const SORT_OPTIONS_WATCH = [
+  { value: "pivot_near", label: "ピボットに近い順" },
+  { value: "vol_dry_asc", label: "出来高が細っている順" },
+  { value: "code_asc", label: "銘柄コード順" },
+];
+
 const state = {
-  mode: "today", // "today" | "history"
+  mode: "today", // "today" | "history" | "watch"
+  patternFilter: "all",
+  watchData: null,
   sortBy: "score_desc",
   historyIndex: null,
   historyCache: {},
@@ -40,7 +48,10 @@ const els = {
   updatedAt: document.getElementById("updatedAt"),
   tabToday: document.getElementById("tabToday"),
   tabHistory: document.getElementById("tabHistory"),
+  tabWatch: document.getElementById("tabWatch"),
   historyPicker: document.getElementById("historyPicker"),
+  patternPicker: document.getElementById("patternPicker"),
+  patternSelect: document.getElementById("patternSelect"),
   dateSelect: document.getElementById("dateSelect"),
   sortSelect: document.getElementById("sortSelect"),
   infoBtn: document.getElementById("infoBtn"),
@@ -59,10 +70,19 @@ async function init() {
 function bindEvents() {
   els.tabToday.addEventListener("click", () => switchMode("today"));
   els.tabHistory.addEventListener("click", () => switchMode("history"));
+  els.tabWatch.addEventListener("click", () => switchMode("watch"));
   els.dateSelect.addEventListener("change", (e) => loadHistoryDate(e.target.value));
+  els.patternSelect.addEventListener("change", (e) => {
+    state.patternFilter = e.target.value;
+    if (state.watchData) renderPatterns(state.watchData);
+  });
   els.sortSelect.addEventListener("change", (e) => {
     state.sortBy = e.target.value;
-    if (state.currentData) renderStocks(state.currentData, { showPerformance: state.mode === "history" });
+    if (state.mode === "watch") {
+      if (state.watchData) renderPatterns(state.watchData);
+    } else if (state.currentData) {
+      renderStocks(state.currentData, { showPerformance: state.mode === "history" });
+    }
   });
   els.infoBtn.addEventListener("click", () => (els.infoSheetBackdrop.hidden = false));
   els.infoSheetClose.addEventListener("click", () => (els.infoSheetBackdrop.hidden = true));
@@ -71,30 +91,171 @@ function bindEvents() {
   });
 }
 
+function sortOptionsFor(mode) {
+  if (mode === "history") return SORT_OPTIONS_HISTORY;
+  if (mode === "watch") return SORT_OPTIONS_WATCH;
+  return SORT_OPTIONS_TODAY;
+}
+
 function populateSortOptions(mode) {
-  const options = mode === "history" ? SORT_OPTIONS_HISTORY : SORT_OPTIONS_TODAY;
+  const options = sortOptionsFor(mode);
   els.sortSelect.innerHTML = options.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
-  // 今のタブで選べない並び替えを選んでいた場合は、既定(スコア順)に戻す
+  // 今のタブで選べない並び替えを選んでいた場合は、そのタブの既定(先頭)に戻す
   if (!options.some((o) => o.value === state.sortBy)) {
-    state.sortBy = "score_desc";
+    state.sortBy = options[0].value;
   }
   els.sortSelect.value = state.sortBy;
 }
 
 async function switchMode(mode) {
   state.mode = mode;
-  els.tabToday.classList.toggle("is-active", mode === "today");
-  els.tabToday.setAttribute("aria-selected", String(mode === "today"));
-  els.tabHistory.classList.toggle("is-active", mode === "history");
-  els.tabHistory.setAttribute("aria-selected", String(mode === "history"));
+  for (const [m, btn] of [["today", els.tabToday], ["history", els.tabHistory], ["watch", els.tabWatch]]) {
+    btn.classList.toggle("is-active", mode === m);
+    btn.setAttribute("aria-selected", String(mode === m));
+  }
   els.historyPicker.hidden = mode !== "history";
+  els.patternPicker.hidden = mode !== "watch";
   populateSortOptions(mode);
 
   if (mode === "today") {
     await loadToday();
+  } else if (mode === "watch") {
+    await loadWatch();
   } else {
     await ensureHistoryIndex();
   }
+}
+
+async function loadWatch() {
+  showMessage("読み込み中…");
+  try {
+    state.watchData = await fetchJson(`${DATA_BASE}/patterns.json`);
+    renderPatterns(state.watchData);
+    setUpdatedAt(state.watchData);
+  } catch (err) {
+    showMessage("チャートの型の判定データがまだありません。夕方以降にもう一度確認してください。");
+  }
+}
+
+function sortPatterns(items, sortBy) {
+  const comparators = {
+    // ブレイク済みを先頭に、形成中はピボットに近い順
+    pivot_near: (a, b) =>
+      (a.status !== "breakout") - (b.status !== "breakout") ||
+      (a.dist_to_pivot_pct ?? 999) - (b.dist_to_pivot_pct ?? 999),
+    vol_dry_asc: (a, b) => (a.vol_dry_ratio ?? 999) - (b.vol_dry_ratio ?? 999),
+    code_asc: (a, b) => String(a.code).localeCompare(String(b.code)) || a.pattern.localeCompare(b.pattern),
+  };
+  return items.sort(comparators[sortBy] || comparators.pivot_near);
+}
+
+function renderPatterns(data) {
+  const all = data.patterns || [];
+  const items = sortPatterns(
+    all.filter((p) => state.patternFilter === "all" || p.pattern === state.patternFilter),
+    state.sortBy,
+  );
+  if (items.length === 0) {
+    showMessage("この条件に当てはまる銘柄はありませんでした。");
+    return;
+  }
+  const nBreakout = items.filter((p) => p.status === "breakout").length;
+  els.listRoot.innerHTML =
+    `<p class="sort-status">${items.length}件(本日ブレイク ${nBreakout}件) ・ 並び順: ${escapeHtml(currentSortLabel())}</p>` +
+    items.map(renderPatternCard).join("");
+}
+
+function renderPatternCard(p) {
+  const isBreakout = p.status === "breakout";
+  const distLabel = isBreakout
+    ? `ブレイク ${formatSigned(-p.dist_to_pivot_pct)}%`
+    : `あと ${formatNum(p.dist_to_pivot_pct)}%`;
+  const vol = p.vol_dry_ratio;
+  const volLabel = vol == null ? "-" : `${vol.toFixed(2)}倍${vol < 1 ? "(減少)" : ""}`;
+  const details = (p.details || [])
+    .map(([k, v]) => `<div class="pattern-detail"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`)
+    .join("");
+
+  return `
+    <article class="stock-card pattern-card">
+      <div class="stock-card-top">
+        <div class="stock-name-block">
+          <div class="stock-code">${escapeHtml(p.code)} ・ ${escapeHtml(p.sector33_name || "-")}</div>
+          <div class="stock-name">${escapeHtml(p.company_name || p.code)}</div>
+        </div>
+        <div class="pattern-badges">
+          <span class="pattern-badge">${escapeHtml(p.pattern_label)}</span>
+          <span class="status-badge ${isBreakout ? "is-breakout" : ""}">${isBreakout ? "本日ブレイク" : "形成中"}</span>
+        </div>
+      </div>
+
+      <div class="pattern-chart">${renderPatternChart(p)}</div>
+
+      <div class="stock-metrics">
+        <div class="metric">
+          <div class="metric-label">終値</div>
+          <div class="metric-value">${formatYen(p.close)}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">ピボット</div>
+          <div class="metric-value">${formatYen(p.pivot)}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">位置</div>
+          <div class="metric-value ${isBreakout ? "is-up-text" : ""}">${distLabel}</div>
+        </div>
+      </div>
+
+      <div class="pattern-details">
+        ${details}
+        <div class="pattern-detail"><span>直近の出来高</span><span>${volLabel}</span></div>
+      </div>
+    </article>
+  `;
+}
+
+// 終値の線に、ベースの範囲(網掛け)・ピボットの水平線・左の高値などの印を重ねて描く
+function renderPatternChart(p) {
+  const chart = p.chart || {};
+  const closes = chart.closes || [];
+  if (closes.length < 2) return "";
+  const w = 320;
+  const h = 120;
+  const padTop = 14;
+  const padBottom = 4;
+  const markers = chart.markers || [];
+  const values = closes.concat(markers.map((m) => m[1]), [p.pivot]).filter((v) => v != null);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const x = (i) => (i / (closes.length - 1)) * w;
+  const y = (v) => padTop + (1 - (v - min) / range) * (h - padTop - padBottom);
+
+  const line = "M" + closes.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" L");
+  const baseX = x(Math.max(0, chart.base_start_i || 0));
+  const pivotY = y(p.pivot).toFixed(1);
+  const marks = markers
+    .map(([i, v, label]) => {
+      const cx = x(i);
+      const cy = y(v);
+      const isLow = label.includes("安値") || label === "底";
+      const ty = isLow ? cy + 11 : cy - 5;
+      const anchor = cx < 30 ? "start" : cx > w - 30 ? "end" : "middle";
+      return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2.6" class="chart-marker"></circle>
+        <text x="${cx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" class="chart-label">${escapeHtml(label)}</text>`;
+    })
+    .join("");
+
+  return `
+    <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img"
+      aria-label="${escapeHtml(chart.start_date)}から${escapeHtml(chart.end_date)}までの終値チャート">
+      <rect x="${baseX.toFixed(1)}" y="0" width="${(w - baseX).toFixed(1)}" height="${h}" class="chart-base"></rect>
+      <line x1="0" x2="${w}" y1="${pivotY}" y2="${pivotY}" class="chart-pivot"></line>
+      <path d="${line}" class="chart-line"></path>
+      ${marks}
+    </svg>
+    <div class="chart-dates"><span>${escapeHtml(chart.start_date)}</span><span>網掛け=ベース ・ 点線=ピボット</span><span>${escapeHtml(chart.end_date)}</span></div>
+  `;
 }
 
 async function fetchJson(path) {
@@ -152,7 +313,7 @@ async function loadHistoryDate(dateStr) {
 }
 
 function setUpdatedAt(data) {
-  const label = state.mode === "today" ? "最終更新" : "この一覧の抽出日";
+  const label = { today: "最終更新", history: "この一覧の抽出日", watch: "判定日" }[state.mode];
   els.updatedAt.textContent = `${label}: ${data.date || "-"}`;
 }
 
@@ -204,8 +365,7 @@ function renderStocks(data, { showPerformance }) {
 }
 
 function currentSortLabel() {
-  const options = state.mode === "history" ? SORT_OPTIONS_HISTORY : SORT_OPTIONS_TODAY;
-  const found = options.find((o) => o.value === state.sortBy);
+  const found = sortOptionsFor(state.mode).find((o) => o.value === state.sortBy);
   return found ? found.label : "";
 }
 
