@@ -66,6 +66,9 @@ jobs:
       - name: Build web data (60-day rolling window)
         run: python build_web_data.py
 
+      - name: Detect chart patterns (cup with handle, flat base, VCP)
+        run: python detect_patterns.py
+
       - name: Compact database (drop redundant index, VACUUM)
         run: python db_maintenance.py compact
 

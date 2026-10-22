@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14161c">
 <title>高値ブレイク板</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -21,12 +21,22 @@
 <nav class="tabbar" role="tablist" aria-label="表示切替">
   <button class="tab-btn is-active" id="tabToday" role="tab" aria-selected="true">本日の候補</button>
   <button class="tab-btn" id="tabHistory" role="tab" aria-selected="false">履歴</button>
+  <button class="tab-btn" id="tabWatch" role="tab" aria-selected="false">注目</button>
 </nav>
 
 <div class="toolbar">
   <div class="history-picker" id="historyPicker" hidden>
     <label for="dateSelect" class="toolbar-label">日付</label>
     <select id="dateSelect"></select>
+  </div>
+  <div class="history-picker" id="patternPicker" hidden>
+    <label for="patternSelect" class="toolbar-label">型</label>
+    <select id="patternSelect">
+      <option value="all">すべて</option>
+      <option value="cup_with_handle">カップウィズハンドル</option>
+      <option value="flat_base">フラットベース</option>
+      <option value="vcp">VCP</option>
+    </select>
   </div>
   <div class="sort-picker">
     <label for="sortSelect" class="toolbar-label">並び替え</label>
@@ -61,6 +71,20 @@
       <li><strong>業種調整</strong>: 業種ごとの過去の実績差。相場環境に依存する可能性があるため、影響は半分の重みに抑えている</li>
       <li><strong>チャートの締まり具合</strong>: 直前の値幅が狭い(タイトな)銘柄ほど加点</li>
     </ul>
+    <h3 class="sheet-subtitle">「注目」タブ(チャートの型)</h3>
+    <p>
+      上昇の後に「ベース(もみ合い)」を作っている銘柄を、次の3つの型で機械的に判定して表示します。
+      ピボット(ブレイクの目安価格)まで5%以内のものと、当日の終値でピボットを上抜けたものが対象です。
+    </p>
+    <ul class="sheet-list">
+      <li><strong>カップウィズハンドル</strong>: 12〜35%下げたU字のカップの後、上半分で小さく押した(取っ手)形。ピボットは取っ手の始まりの高値</li>
+      <li><strong>フラットベース</strong>: 30%以上上昇した後、高値圏で値幅10%以内の横ばいが5週以上続き、出来高が細っている形。ピボットはベースの高値</li>
+      <li><strong>VCP</strong>: 上昇トレンド中に、押し目が回を追うごとに浅くなる形(例: 17% → 9% → 5%)。ピボットは最後の押し目の高値</li>
+    </ul>
+    <p class="sheet-note">
+      形の判定は計算式による機械的なもので、見落としや誤判定があります。
+      監視候補を探すための参考情報であり、売買を勧めるものではありません。
+    </p>
     <p class="sheet-note">
       詳しい検証内容・売買時のチェック手順は、リポジトリ内の
       <code>TRADING_RULE.md</code> / <code>HOW_TO_TRADE.md</code> を
@@ -70,6 +94,6 @@
   </div>
 </div>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
