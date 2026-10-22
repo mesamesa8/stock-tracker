@@ -10,6 +10,9 @@ const SORT_OPTIONS_TODAY = [
   { value: "score_desc", label: "総合スコアが高い順" },
   { value: "win_rate_desc", label: "期待勝率が高い順" },
   { value: "expected_return_desc", label: "期待値が高い順" },
+  { value: "tightness_desc", label: "チャートの締まりが良い順" },
+  { value: "sector_desc", label: "業種調整が高い順" },
+  { value: "sector_asc", label: "業種名順" },
   { value: "code_asc", label: "銘柄コード順" },
 ];
 
@@ -19,6 +22,8 @@ const SORT_OPTIONS_HISTORY = [
   { value: "pct_change_asc", label: "値下がり率が大きい順" },
   { value: "days_elapsed_desc", label: "経過日数が長い順" },
   { value: "win_rate_desc", label: "期待勝率が高い順" },
+  { value: "tightness_desc", label: "チャートの締まりが良い順" },
+  { value: "sector_asc", label: "業種名順" },
   { value: "code_asc", label: "銘柄コード順" },
 ];
 
@@ -165,6 +170,11 @@ function sortStocks(stocks, sortBy) {
     pct_change_desc: (a, b) => (b.current_pct_change ?? -999) - (a.current_pct_change ?? -999),
     pct_change_asc: (a, b) => (a.current_pct_change ?? 999) - (b.current_pct_change ?? 999),
     days_elapsed_desc: (a, b) => (b._daysElapsed ?? -1) - (a._daysElapsed ?? -1),
+    tightness_desc: (a, b) => (b.tightness_bonus_pct ?? -999) - (a.tightness_bonus_pct ?? -999),
+    sector_desc: (a, b) => (b.sector_adjustment_pct ?? -999) - (a.sector_adjustment_pct ?? -999),
+    sector_asc: (a, b) =>
+      String(a.sector33_name || "").localeCompare(String(b.sector33_name || ""), "ja") ||
+      (b.composite_score ?? -999) - (a.composite_score ?? -999),
     code_asc: (a, b) => String(a.code).localeCompare(String(b.code)),
   };
 
@@ -187,10 +197,33 @@ function renderStocks(data, { showPerformance }) {
 
   const maxScore = Math.max(...stocks.map((s) => s.composite_score ?? 0), 0.01);
 
-  els.listRoot.innerHTML = stocks.map((s) => renderCard(s, maxScore, showPerformance)).join("");
+  const sortLabel = currentSortLabel();
+  els.listRoot.innerHTML =
+    `<p class="sort-status">${stocks.length}銘柄 ・ 並び順: ${escapeHtml(sortLabel)}</p>` +
+    stocks.map((s, i) => renderCard(s, maxScore, showPerformance, i + 1)).join("");
 }
 
-function renderCard(s, maxScore, showPerformance) {
+function currentSortLabel() {
+  const options = state.mode === "history" ? SORT_OPTIONS_HISTORY : SORT_OPTIONS_TODAY;
+  const found = options.find((o) => o.value === state.sortBy);
+  return found ? found.label : "";
+}
+
+// 並び替えの基準になっている値をカードに表示し、並び替えが効いていることを目で確認できるようにする
+function sortKeyBadge(s) {
+  switch (state.sortBy) {
+    case "win_rate_desc": return `期待勝率 ${formatNum(s.expected_win_rate_pct)}%`;
+    case "expected_return_desc": return `期待値 ${formatSigned(s.expected_return_pct)}`;
+    case "tightness_desc": return `締まり ${formatSigned(s.tightness_bonus_pct)}`;
+    case "sector_desc": return `業種調整 ${formatSigned(s.sector_adjustment_pct)}`;
+    case "pct_change_desc":
+    case "pct_change_asc": return `騰落 ${formatSigned(s.current_pct_change)}%`;
+    case "days_elapsed_desc": return `経過${daysElapsed(s)}営業日`;
+    default: return "";
+  }
+}
+
+function renderCard(s, maxScore, showPerformance, rank) {
   const rankOpacity = Math.max(0.25, Math.min(1, (s.composite_score ?? 0) / maxScore));
   const perfHtml = showPerformance ? renderPerformance(s) : "";
 
@@ -198,7 +231,7 @@ function renderCard(s, maxScore, showPerformance) {
     <article class="stock-card" style="--rank-opacity: ${rankOpacity}">
       <div class="stock-card-top">
         <div class="stock-name-block">
-          <div class="stock-code">${escapeHtml(s.code)} ・ ${escapeHtml(s.sector33_name || "-")}</div>
+          <div class="stock-code">${rank}位 ・ ${escapeHtml(s.code)} ・ ${escapeHtml(s.sector33_name || "-")}${sortKeyBadge(s) ? ` <span class="sort-key">${escapeHtml(sortKeyBadge(s))}</span>` : ""}</div>
           <div class="stock-name">${escapeHtml(s.company_name || s.code)}</div>
         </div>
         <div class="stock-score">

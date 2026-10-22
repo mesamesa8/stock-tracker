@@ -428,3 +428,20 @@ body {
   .stock-card { transition: transform 0.15s ease; }
   .stock-card:active { transform: scale(0.99); }
 }
+
+/* ---------- 並び替えの状態表示 ---------- */
+
+.sort-status {
+  margin: 0 2px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sort-key {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--accent);
+  font-weight: 700;
+}
