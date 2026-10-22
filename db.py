@@ -61,7 +61,9 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_stocks_daily_date ON stocks_daily(date);
-        CREATE INDEX IF NOT EXISTS idx_stocks_daily_code ON stocks_daily(code);
+        -- 銘柄コードでの検索は主キー(code, date)の索引で足りるため、
+        -- 重複していた code 単独の索引は削除する(DBサイズ約16MB削減)。
+        DROP INDEX IF EXISTS idx_stocks_daily_code;
 
         -- 前日比率を自動計算するビュー。生データ(stocks_daily)はそのままに、
         -- 参照時に前営業日比の変化率(%)を計算して返す。
@@ -87,6 +89,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+def compact_db(conn: sqlite3.Connection) -> None:
+    """WALの内容を本体に書き戻し、空き領域を詰めてファイルを小さくする。
+
+    索引を削除しただけではファイルサイズは減らないため、VACUUMが必要。
+    """
+    conn.commit()
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("VACUUM")
 
 
 def upsert_indices(conn: sqlite3.Connection, rows: list[dict]) -> None:
