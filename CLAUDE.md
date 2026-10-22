@@ -21,7 +21,8 @@
 - 分析: `analyze_*.py`、`technical_features.py`、`backtest_rule.py`、`optimize_tp_sl.py`
 - 日次処理: `daily_screener.py`(→ `analysis_output/screening_YYYY-MM-DD.csv`)→ `build_web_data.py`(→ `docs/data/`、直近60日分のみ保持)
 - Web: `docs/index.html` / `app.js` / `style.css`(フレームワーク不使用)
-- 自動実行: `.github/workflows/daily_fetch.yml`(毎日 JST 16:00、`git add -A .` でコミット)
+- 自動実行: `.github/workflows/daily_fetch.yml`(毎日 JST 16:00。DBは Release `db-latest` から取得→更新→検証→アップロード、その他は `git add -A .` でコミット)
+- DB保守: `db_maintenance.py`(compact / count / verify)。テストは `py -3.14 -m unittest discover tests`
 - ルール文書: `TRADING_RULE.md` / `HOW_TO_TRADE.md` / `README.md`
 
 ## 採用ルール(daily_screener.py)
@@ -30,7 +31,7 @@
 総合スコア = 期待値 + 業種調整(×0.5済) + チャートの締まり。表示値の単純合計がスコア。
 
 ## 守ること
-- **`market_data.sqlite3` は手元で更新・コミットしない。** GitHub Actions が毎日更新するため、ローカルと二重更新すると競合・データ消失が起きる(実際に2025年分が消えた)。バックフィルを実行したら直後にpushし、作業前は必ず pull する。
+- **`market_data.sqlite3` はGitで管理しない(GitHub Releases `db-latest` に置く)。** 手元へは `gh release download db-latest --pattern market_data.sqlite3 --clobber` で取得する。手元で更新したDBをアップロードしない(Actionsとの二重更新でデータ消失が起きる。実際に2025年分が消えた)。バックフィル等でアップロードが必要なときはユーザーに確認してから行う。作業前は必ず pull する。
 - DB・`analysis_output/screening_*.csv`・`docs/data/` は自動生成物。手で編集しない。
 - Actions の `git add` は `git add -A .` を維持(存在しないパス指定は失敗する)。
 - JSON出力で NaN を出さない(`safe_num()` で None に変換)。
@@ -40,7 +41,7 @@
 
 ## 既知の限界
 - バックテストは手数料・税・スリッページ未考慮、検証期間は約1.5年。業種効果(銀行業など)は相場環境依存の可能性。
-- DBを毎日コミットするため履歴が肥大化する(目安1GB)。将来は保存方法の見直しが必要。
+- DBはReleases移行済みだが、移行前にコミットされた過去のDBがGit履歴に残っている(約160MB)。削減には履歴の書き換え(force push)が必要で、未実施。
 - `index.html` の算出式表記「業種調整 × 0.5」と、JSONの `sector_adjustment_pct`(0.5倍後の値)が紛らわしい。
 
 ## 今後の候補

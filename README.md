@@ -28,7 +28,31 @@
 | `TRADING_RULE.md` | ②③で確立したトレードルールをまとめた文書 |
 | `HOW_TO_TRADE.md` | 実際の売買時にルールをどうチェックするかの手順書 |
 | `.github/workflows/daily_fetch.yml` | GitHub Actionsでの自動実行設定 |
-| `market_data.sqlite3` | 蓄積されるデータベース(初回実行時に自動作成) |
+| `market_data.sqlite3` | 蓄積されるデータベース。Gitでは管理せず、GitHub Releases(タグ `db-latest`)に置く(下記「DBファイルの取得」参照) |
+| `db_maintenance.py` | DBの圧縮・壊れていないかの確認(GitHub Actionsで自動実行) |
+| `tests/` | 主要ロジックのテスト(`py -3.14 -m unittest discover tests` で実行) |
+
+## DBファイルの取得(Releasesでの管理)
+
+`market_data.sqlite3` は大きく(60MB超)、毎日更新されるため、Gitではなく
+GitHub の **Releases**(リポジトリに付属するファイル置き場)で管理しています。
+
+- GitHub Actions が毎日、Release `db-latest` からDBをダウンロード → 更新 →
+  アップロードし直します。
+- アップロード前に「DBが壊れていないか」「行数が減っていないか」を確認し、
+  問題があればアップロードを中止します。
+- 曜日ごとの圧縮バックアップ(`market_data-backup-Mon.sqlite3.gz` など、7日分)も
+  同じReleaseに置かれます。
+
+手元で分析スクリプトを動かすときは、最新のDBを次のコマンドで取得してください
+(GitHub CLI `gh` が必要)。
+
+```bash
+gh release download db-latest --pattern market_data.sqlite3 --clobber
+```
+
+**手元で更新したDBはアップロードしないでください。** 毎日の自動更新と
+ぶつかり、データが消える原因になります。
 
 ## 直近12週間のデータについて
 
@@ -136,6 +160,11 @@ python3 backfill.py --start-date 2026-01-01
 日々の自動更新(GitHub Actions)は `main.py`(1日分)がそのまま使われる
 ので、バックフィルは最初の1回だけ実行すればOKです。
 
+※ 手元でバックフィルしたDBをReleaseに反映するには、その日の自動実行が
+終わった直後に、事前に最新DBを取得してからバックフィルし、
+`gh release upload db-latest market_data.sqlite3 --clobber` で上書きします。
+自動更新とぶつかる危険があるため、実施前に相談してください。
+
 ### 2. GitHubリポジトリを作る
 
 1. GitHubで新しいリポジトリを作成(Private でも Public でもどちらでも可)
@@ -163,8 +192,8 @@ GitHub Actions上ではAPIキーをコードに書けないため、Secretsと�
 ### 4. 自動実行を確認する
 
 `.github/workflows/daily_fetch.yml` により、毎日 日本時間16:00頃に自動で
-データ取得が走り、結果が `market_data.sqlite3` としてリポジトリに
-コミットされます。
+データ取得が走ります。DBは Release `db-latest` にアップロードされ、
+スクリーニング結果とWeb用データはリポジトリにコミットされます。
 
 すぐに動作確認したい場合は、GitHubリポジトリの `Actions` タブ →
 `Daily Market Data Fetch` → `Run workflow` で手動実行できます。

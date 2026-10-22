@@ -7,11 +7,22 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch: {}  # 手動実行ボタンも使えるようにしておく
 
+# 定期実行と手動実行が重なると、Release上のDBを互いに上書きしてしまうため1本ずつ実行する
+concurrency:
+  group: daily-fetch
+  cancel-in-progress: false
+
+env:
+  # DBファイル(market_data.sqlite3)はGitでは管理せず、このタグのReleaseに置く
+  DB_RELEASE_TAG: db-latest
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # DBファイルをリポジトリにコミットするために必要
+      contents: write  # Releaseへのアップロードと、結果ファイルのコミットに必要
+    env:
+      GH_TOKEN: ${{ github.token }}  # gh コマンドでReleaseを操作するため
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,6 +38,23 @@ jobs:
       - name: Run tests
         run: python -m unittest discover tests
 
+      - name: Download database from Release
+        run: |
+          set -euo pipefail
+          mkdir -p .db_download
+          if gh release download "$DB_RELEASE_TAG" --pattern market_data.sqlite3 --dir .db_download; then
+            mv .db_download/market_data.sqlite3 market_data.sqlite3
+            echo "ReleaseからDBを取得しました"
+          elif git ls-files --error-unmatch market_data.sqlite3 >/dev/null 2>&1; then
+            # Release移行後の初回だけ、まだリポジトリに残っているDBを使う
+            echo "初回移行: リポジトリ内のDBを使用します"
+          else
+            echo "::error::ReleaseからDBを取得できませんでした。処理を中止します"
+            exit 1
+          fi
+          rm -rf .db_download
+          echo "BASELINE_ROWS=$(python db_maintenance.py count)" >> "$GITHUB_ENV"
+
       - name: Run daily fetch script
         env:
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
@@ -41,10 +69,30 @@ jobs:
       - name: Compact database (drop redundant index, VACUUM)
         run: python db_maintenance.py compact
 
-      - name: Commit updated database, screening results, and web data
+      - name: Verify database before upload
+        run: python db_maintenance.py verify --min-rows "$BASELINE_ROWS"
+
+      - name: Upload database to Release
+        run: |
+          set -euo pipefail
+          if ! gh release view "$DB_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$DB_RELEASE_TAG" --latest=false \
+              --title "Market database (auto-updated)" \
+              --notes "GitHub Actions が毎日更新する market_data.sqlite3 の置き場所です。手で削除しないでください。"
+          fi
+          # 上書き中に失敗してもDBを失わないよう、曜日ごとの圧縮バックアップ(7世代)を先に置く
+          backup="market_data-backup-$(date -u +%a).sqlite3.gz"
+          gzip -9 -c market_data.sqlite3 > "$backup"
+          gh release upload "$DB_RELEASE_TAG" "$backup" --clobber
+          gh release upload "$DB_RELEASE_TAG" market_data.sqlite3 --clobber
+          rm "$backup"
+
+      - name: Commit screening results and web data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # DBはReleaseで管理するため、Gitの管理対象から外す(初回のみ効果があり、以降は何もしない)
+          git rm --cached --ignore-unmatch -q market_data.sqlite3
           git add -A .
-          git diff --quiet --cached || git commit -m "Update market data, screening, and web data ($(date -u +'%Y-%m-%d'))"
+          git diff --quiet --cached || git commit -m "Update screening and web data ($(date -u +'%Y-%m-%d'))"
           git push
