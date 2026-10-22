@@ -1,0 +1,20 @@
+# 秘密情報(APIキーなど)。.env.example のみコミットする
+.env
+.env.*
+!.env.example
+
+# Python の一時ファイル
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# エディタ・OS の生成ファイル
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 注意: market_data.sqlite3 / analysis_output/ / docs/data/ は
+# GitHub Actions が毎日コミットする成果物なので、ここに書かないこと
