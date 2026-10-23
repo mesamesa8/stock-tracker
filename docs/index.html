@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14161c">
 <title>高値ブレイク板</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -28,6 +28,10 @@
   <div class="history-picker" id="historyPicker" hidden>
     <label for="dateSelect" class="toolbar-label">日付</label>
     <select id="dateSelect"></select>
+  </div>
+  <div class="history-picker" id="watchDatePicker" hidden>
+    <label for="watchDateSelect" class="toolbar-label">判定日</label>
+    <select id="watchDateSelect"></select>
   </div>
   <div class="history-picker" id="patternPicker" hidden>
     <label for="patternSelect" class="toolbar-label">型</label>
@@ -75,6 +79,8 @@
     <p>
       上昇の後に「ベース(もみ合い)」を作っている銘柄を、次の3つの型で機械的に判定して表示します。
       ピボット(ブレイクの目安価格)まで5%以内のものと、当日の終値でピボットを上抜けたものが対象です。
+      「判定日」で過去60営業日分の結果も選べます。過去の日付では、その日までのデータだけで判定した結果に、
+      その後の値動き(チャートの色の変わった部分・騰落率・ピボットを上抜けたか)を重ねて表示します。
     </p>
     <ul class="sheet-list">
       <li><strong>カップウィズハンドル</strong>: 12〜35%下げたU字のカップの後、上半分で小さく押した(取っ手)形。ピボットは取っ手の始まりの高値</li>
@@ -94,6 +100,6 @@
   </div>
 </div>
 
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

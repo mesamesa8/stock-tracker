@@ -29,6 +29,7 @@ const SORT_OPTIONS_HISTORY = [
 
 const SORT_OPTIONS_WATCH = [
   { value: "pivot_near", label: "ピボットに近い順" },
+  { value: "after_pct_desc", label: "その後の値上がり率順" },
   { value: "vol_dry_asc", label: "出来高が細っている順" },
   { value: "code_asc", label: "銘柄コード順" },
 ];
@@ -37,6 +38,8 @@ const state = {
   mode: "today", // "today" | "history" | "watch"
   patternFilter: "all",
   watchData: null,
+  watchIndex: null,
+  watchCache: {},
   sortBy: "score_desc",
   historyIndex: null,
   historyCache: {},
@@ -51,6 +54,8 @@ const els = {
   tabWatch: document.getElementById("tabWatch"),
   historyPicker: document.getElementById("historyPicker"),
   patternPicker: document.getElementById("patternPicker"),
+  watchDatePicker: document.getElementById("watchDatePicker"),
+  watchDateSelect: document.getElementById("watchDateSelect"),
   patternSelect: document.getElementById("patternSelect"),
   dateSelect: document.getElementById("dateSelect"),
   sortSelect: document.getElementById("sortSelect"),
@@ -72,6 +77,7 @@ function bindEvents() {
   els.tabHistory.addEventListener("click", () => switchMode("history"));
   els.tabWatch.addEventListener("click", () => switchMode("watch"));
   els.dateSelect.addEventListener("change", (e) => loadHistoryDate(e.target.value));
+  els.watchDateSelect.addEventListener("change", (e) => loadWatchDate(e.target.value));
   els.patternSelect.addEventListener("change", (e) => {
     state.patternFilter = e.target.value;
     if (state.watchData) renderPatterns(state.watchData);
@@ -115,6 +121,7 @@ async function switchMode(mode) {
   }
   els.historyPicker.hidden = mode !== "history";
   els.patternPicker.hidden = mode !== "watch";
+  els.watchDatePicker.hidden = mode !== "watch";
   populateSortOptions(mode);
 
   if (mode === "today") {
@@ -127,11 +134,41 @@ async function switchMode(mode) {
 }
 
 async function loadWatch() {
+  if (!state.watchIndex) {
+    try {
+      state.watchIndex = await fetchJson(`${DATA_BASE}/patterns/index.json`);
+    } catch (err) {
+      state.watchIndex = { dates: [] };
+    }
+  }
+  const dates = state.watchIndex.dates || [];
+  if (dates.length === 0) {
+    // 日付ごとのファイルがまだない場合は、最新日の結果だけを表示する
+    els.watchDatePicker.hidden = true;
+    await loadWatchDate(null);
+    return;
+  }
+  els.watchDateSelect.innerHTML = dates
+    .map((d) => `<option value="${d.date}">${d.date.slice(5)}(${d.n}件${d.n_breakout ? `・突破${d.n_breakout}` : ""})</option>`)
+    .join("");
+  const selected = state.watchData && dates.some((d) => d.date === state.watchData.date)
+    ? state.watchData.date
+    : dates[0].date;
+  els.watchDateSelect.value = selected;
+  await loadWatchDate(selected);
+}
+
+async function loadWatchDate(dateStr) {
   showMessage("読み込み中…");
   try {
-    state.watchData = await fetchJson(`${DATA_BASE}/patterns.json`);
-    renderPatterns(state.watchData);
-    setUpdatedAt(state.watchData);
+    let data = dateStr ? state.watchCache[dateStr] : null;
+    if (!data) {
+      data = await fetchJson(dateStr ? `${DATA_BASE}/patterns/${dateStr}.json` : `${DATA_BASE}/patterns.json`);
+      if (dateStr) state.watchCache[dateStr] = data;
+    }
+    state.watchData = data;
+    renderPatterns(data);
+    setUpdatedAt(data);
   } catch (err) {
     showMessage("チャートの型の判定データがまだありません。夕方以降にもう一度確認してください。");
   }
@@ -143,6 +180,7 @@ function sortPatterns(items, sortBy) {
     pivot_near: (a, b) =>
       (a.status !== "breakout") - (b.status !== "breakout") ||
       (a.dist_to_pivot_pct ?? 999) - (b.dist_to_pivot_pct ?? 999),
+    after_pct_desc: (a, b) => (b.after?.pct ?? -999) - (a.after?.pct ?? -999),
     vol_dry_asc: (a, b) => (a.vol_dry_ratio ?? 999) - (b.vol_dry_ratio ?? 999),
     code_asc: (a, b) => String(a.code).localeCompare(String(b.code)) || a.pattern.localeCompare(b.pattern),
   };
@@ -161,8 +199,50 @@ function renderPatterns(data) {
   }
   const nBreakout = items.filter((p) => p.status === "breakout").length;
   els.listRoot.innerHTML =
-    `<p class="sort-status">${items.length}件(本日ブレイク ${nBreakout}件) ・ 並び順: ${escapeHtml(currentSortLabel())}</p>` +
+    `<p class="sort-status">${items.length}件(当日ブレイク ${nBreakout}件) ・ 並び順: ${escapeHtml(currentSortLabel())}</p>` +
+    renderAfterSummary(items) +
     items.map(renderPatternCard).join("");
+}
+
+// 過去の判定日を見ているときに、その後の結果をまとめて表示する
+function renderAfterSummary(items) {
+  const withAfter = items.filter((p) => p.after);
+  if (withAfter.length === 0) return "";
+  const days = Math.max(...withAfter.map((p) => p.after.days));
+  const broke = withAfter.filter((p) => p.after.breakout_days != null).length;
+  const pcts = withAfter.map((p) => p.after.pct).filter((v) => v != null);
+  const avg = pcts.reduce((a, b) => a + b, 0) / (pcts.length || 1);
+  const up = pcts.filter((v) => v > 0).length;
+  return `
+    <div class="after-summary">
+      <div class="after-summary-title">判定日から${days}営業日後の結果</div>
+      <div class="after-summary-row">
+        <span>ピボット上抜け <strong>${broke}/${withAfter.length}件</strong></span>
+        <span>上昇 <strong>${up}/${pcts.length}件</strong></span>
+        <span>平均 <strong class="${avg > 0 ? "is-up-text" : avg < 0 ? "is-down-text" : ""}">${formatSigned(avg)}%</strong></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderAfterRow(a) {
+  if (!a) return "";
+  const pctClass = a.pct == null || Math.abs(a.pct) < 0.05 ? "is-flat" : a.pct > 0 ? "is-up" : "is-down";
+  const breakout =
+    a.breakout_days == null ? "ピボット未突破" : a.breakout_days === 0 ? "判定日にブレイク" : `${a.breakout_days}日後にピボット突破`;
+  return `
+    <div class="perf-row">
+      <span class="perf-pill ${pctClass}">${formatSigned(a.pct)}%</span>
+      <div class="after-text">
+        <div>その後${a.days}営業日 ・ ${escapeHtml(breakout)}</div>
+        <div class="after-sub">最高 ${formatSigned(a.max_pct)}% / 最安 ${formatSigned(a.min_pct)}%</div>
+      </div>
+      <div class="perf-right">
+        <span class="perf-current">${formatYen(a.close)}円</span>
+        <span class="perf-days">現在値</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderPatternCard(p) {
@@ -185,7 +265,7 @@ function renderPatternCard(p) {
         </div>
         <div class="pattern-badges">
           <span class="pattern-badge">${escapeHtml(p.pattern_label)}</span>
-          <span class="status-badge ${isBreakout ? "is-breakout" : ""}">${isBreakout ? "本日ブレイク" : "形成中"}</span>
+          <span class="status-badge ${isBreakout ? "is-breakout" : ""}">${isBreakout ? "当日ブレイク" : "形成中"}</span>
         </div>
       </div>
 
@@ -210,29 +290,43 @@ function renderPatternCard(p) {
         ${details}
         <div class="pattern-detail"><span>直近の出来高</span><span>${volLabel}</span></div>
       </div>
+
+      ${renderAfterRow(p.after)}
     </article>
   `;
 }
 
-// 終値の線に、ベースの範囲(網掛け)・ピボットの水平線・左の高値などの印を重ねて描く
+// 終値の線に、ベースの範囲(網掛け)・ピボットの水平線・左の高値などの印を重ねて描く。
+// 過去の判定日では、判定日より後の値動きを色を変えてつなげる
 function renderPatternChart(p) {
   const chart = p.chart || {};
   const closes = chart.closes || [];
   if (closes.length < 2) return "";
+  const afterCloses = (p.after && p.after.closes) || [];
+  const total = closes.length + afterCloses.length;
   const w = 320;
   const h = 120;
   const padTop = 14;
   const padBottom = 4;
   const markers = chart.markers || [];
-  const values = closes.concat(markers.map((m) => m[1]), [p.pivot]).filter((v) => v != null);
+  const values = closes.concat(afterCloses, markers.map((m) => m[1]), [p.pivot]).filter((v) => v != null);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const x = (i) => (i / (closes.length - 1)) * w;
+  const x = (i) => (i / (total - 1)) * w;
   const y = (v) => padTop + (1 - (v - min) / range) * (h - padTop - padBottom);
 
   const line = "M" + closes.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" L");
+  const lastI = closes.length - 1;
+  const afterPct = p.after ? p.after.pct : null;
+  const afterLine = afterCloses.length
+    ? `<line x1="${x(lastI).toFixed(1)}" x2="${x(lastI).toFixed(1)}" y1="0" y2="${h}" class="chart-judge-line"></line>
+       <path d="M${x(lastI).toFixed(1)},${y(closes[lastI]).toFixed(1)} L${afterCloses
+         .map((v, i) => `${x(lastI + 1 + i).toFixed(1)},${y(v).toFixed(1)}`)
+         .join(" L")}" class="chart-after ${afterPct > 0 ? "is-up" : afterPct < 0 ? "is-down" : ""}"></path>`
+    : "";
   const baseX = x(Math.max(0, chart.base_start_i || 0));
+  const baseW = x(lastI) - baseX;
   const pivotY = y(p.pivot).toFixed(1);
   const marks = markers
     .map(([i, v, label]) => {
@@ -249,12 +343,13 @@ function renderPatternChart(p) {
   return `
     <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img"
       aria-label="${escapeHtml(chart.start_date)}から${escapeHtml(chart.end_date)}までの終値チャート">
-      <rect x="${baseX.toFixed(1)}" y="0" width="${(w - baseX).toFixed(1)}" height="${h}" class="chart-base"></rect>
+      <rect x="${baseX.toFixed(1)}" y="0" width="${baseW.toFixed(1)}" height="${h}" class="chart-base"></rect>
       <line x1="0" x2="${w}" y1="${pivotY}" y2="${pivotY}" class="chart-pivot"></line>
       <path d="${line}" class="chart-line"></path>
+      ${afterLine}
       ${marks}
     </svg>
-    <div class="chart-dates"><span>${escapeHtml(chart.start_date)}</span><span>網掛け=ベース ・ 点線=ピボット</span><span>${escapeHtml(chart.end_date)}</span></div>
+    <div class="chart-dates"><span>${escapeHtml(chart.start_date)}</span><span>網掛け=ベース ・ 点線=ピボット${afterCloses.length ? " ・ 色付き=判定後" : ""}</span><span>${afterCloses.length ? "現在" : escapeHtml(chart.end_date)}</span></div>
   `;
 }
 
