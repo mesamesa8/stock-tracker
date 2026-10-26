@@ -48,32 +48,81 @@ def _vcp_closes():
     )
 
 
+def _cup_ohlv(closes, breakout_volume=None):
+    """カップ用: 底(170〜189日目)と取っ手(231日目以降)で出来高が細るようにする。"""
+    h, l, c, v = _ohlv(closes)
+    v[170:190] = 600.0
+    v[231:] = 700.0
+    if breakout_volume is not None:
+        v[-1] = breakout_volume
+    return h, l, c, v
+
+
 class CupWithHandleTest(unittest.TestCase):
+    def detect(self, closes, **kw):
+        h, l, c, v = _cup_ohlv(closes, **kw)
+        return cp.detect_cup_with_handle(h, l, c, v, len(c) - 1)
+
     def test_detects_forming_cup(self):
-        h, l, c, v = _ohlv(_cup_closes())
-        res = cp.detect_cup_with_handle(h, l, c, v, len(c) - 1)
+        res = self.detect(_cup_closes())
         self.assertIsNotNone(res)
         self.assertEqual(res["status"], "forming")
         self.assertAlmostEqual(res["pivot"], 99.5 * 1.01, places=6)
         self.assertEqual([m[2] for m in res["markers"]], ["左の高値", "底", "右の高値"])
 
-    def test_detects_breakout_on_first_close_above_pivot(self):
-        h, l, c, v = _ohlv(np.append(_cup_closes(), 102.0))
-        res = cp.detect_cup_with_handle(h, l, c, v, len(c) - 1)
-        self.assertEqual(res["status"], "breakout")
-
-    def test_v_shaped_bottom_is_rejected(self):
-        # 底の手前で急落し、すぐ急反発する(底にとどまらない)
-        closes = _series(
-            (70, 100, 130), (100, 90, 35), (90, 78, 15), (78, 90, 15), (90, 99.5, 35), (99.5, 94, 10), (94, 97, 5)
-        )
-        h, l, c, v = _ohlv(closes)
-        self.assertIsNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+    def test_breakout_needs_volume_surge(self):
+        closes = np.append(_cup_closes(), 102.0)
+        self.assertEqual(self.detect(closes, breakout_volume=1500.0)["status"], "breakout")
+        # 出来高が直前50日平均の1.4倍に届かない上抜けはブレイクとみなさない
+        self.assertIsNone(self.detect(closes, breakout_volume=1000.0))
 
     def test_too_deep_cup_is_rejected(self):
         closes = _series((70, 100, 130), (100, 55, 40), (55, 55, 20), (55, 99.5, 40), (99.5, 94, 10), (94, 97, 5))
-        h, l, c, v = _ohlv(closes)
+        self.assertIsNone(self.detect(closes))
+
+    def test_too_short_cup_is_rejected(self):
+        # 左の高値〜右の高値が約2ヶ月(3ヶ月未満)
+        closes = _series((70, 100, 160), (100, 78, 15), (78, 78, 10), (78, 99.5, 15), (99.5, 94, 10), (94, 97, 5))
+        self.assertIsNone(self.detect(closes))
+
+    def test_shallow_handle_is_rejected(self):
+        # 取っ手の押しが約3%(5%未満)
+        closes = _series((70, 100, 130), (100, 78, 40), (78, 78, 20), (78, 99.5, 40), (99.5, 97.5, 10), (97.5, 98, 5))
+        self.assertIsNone(self.detect(closes))
+
+    def test_weak_prior_rise_is_rejected(self):
+        # カップ前の上昇が約15%(30%未満)
+        closes = _series((87, 100, 130), (100, 78, 40), (78, 78, 20), (78, 99.5, 40), (99.5, 94, 10), (94, 97, 5))
+        self.assertIsNone(self.detect(closes))
+
+    def test_bottom_without_volume_dry_up_is_rejected(self):
+        h, l, c, v = _cup_ohlv(_cup_closes())
+        v[170:190] = 1000.0
         self.assertIsNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+
+    def test_handle_without_volume_dry_up_is_rejected(self):
+        h, l, c, v = _cup_ohlv(_cup_closes())
+        v[231:] = 1000.0
+        self.assertIsNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+
+    def test_handle_below_10_week_line_is_rejected(self):
+        # 取っ手で大きく崩れて50日線を割り込む(押しは10%以内に収まるよう高値側を長くする)
+        closes = _series((70, 100, 130), (100, 78, 40), (78, 78, 20), (78, 99.5, 15), (99.5, 99.5, 25), (99.5, 91, 3), (91, 92, 2))
+        h, l, c, v = _cup_ohlv(closes)
+        self.assertIsNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+
+    def test_removed_u_shape_check_can_be_restored(self):
+        # 急落してすぐ底を打つ偏った形(底がカップの左端寄り)。U字チェックを外した今は検出され、元に戻すと除外される
+        closes = _series((70, 100, 130), (100, 78, 8), (78, 99.5, 60), (99.5, 94, 10), (94, 97, 5))
+        h, l, c, v = _ohlv(closes)
+        v[133:143] = 600.0
+        v[199:] = 700.0
+        self.assertIsNotNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+        try:
+            cp.CUP_REQUIRE_U_SHAPE = True
+            self.assertIsNone(cp.detect_cup_with_handle(h, l, c, v, len(c) - 1))
+        finally:
+            cp.CUP_REQUIRE_U_SHAPE = False
 
 
 class FlatBaseTest(unittest.TestCase):

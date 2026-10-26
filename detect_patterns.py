@@ -35,6 +35,8 @@ from chart_patterns import PATTERNS, RULE_VERSION
 HISTORY_DAYS = 60              # 過去何営業日分の判定結果を残すか
 LOOKBACK_CALENDAR_DAYS = 650   # 読み込む期間(最も古い判定日でも、200日線とカップの長さに足りる分)
 MAX_DIST_TO_PIVOT_PCT = 5.0    # ピボットからこれ以上離れている「形成中」は載せない
+# 上の距離の絞り込みをしない型。カップは取っ手の押し(5〜10%)の条件があるため、2026-10 にユーザーの判断で外した
+DIST_FILTER_EXEMPT = {"cup_with_handle"}
 CHART_DAYS = 250               # チャートに描く日数(ベースがもっと長ければ伸ばす)
 ANOMALY_DAILY_RETURN = 0.25    # 1日でこれ以上動いた銘柄は分割未調整などの可能性があるため除外
 PATTERN_HISTORY_DIR = WEB_DATA_DIR / "patterns"
@@ -76,7 +78,11 @@ def detect_on(stocks: dict[str, Stock], date: str, names: pd.DataFrame) -> list[
             res = detect(s.h, s.l, s.c, s.v, t)
             if res is None:
                 continue
-            if res["status"] == "forming" and (res["pivot"] / s.c[t] - 1) * 100 > MAX_DIST_TO_PIVOT_PCT:
+            if (
+                res["status"] == "forming"
+                and key not in DIST_FILTER_EXEMPT
+                and (res["pivot"] / s.c[t] - 1) * 100 > MAX_DIST_TO_PIVOT_PCT
+            ):
                 continue
             items.append(build_item(code, s, t, key, label, res, names))
     items.sort(key=lambda x: (x["status"] != "breakout", x["dist_to_pivot_pct"] or 0))

@@ -2,7 +2,7 @@
 チャートパターン(ベース)の機械的な判定。
 
 対象の型:
-  - カップウィズハンドル(cup_with_handle): U字のカップ + 上半分での小さな押し(取っ手)
+  - カップウィズハンドル(cup_with_handle): 3〜6ヶ月のカップ + 5〜10%の小さな押し(取っ手)
   - フラットベース(flat_base): 上昇の後、高値圏で値幅15%以内の横ばいが5週以上続く
   - VCP(vcp): 押し目の深さが回を追うごとに浅くなる(例: 20% → 10% → 5%)
 
@@ -24,17 +24,23 @@ from __future__ import annotations
 import numpy as np
 
 # 判定条件(下の定数)を変えたら上げる。過去の判定結果ファイルは、版が違うと作り直される
-RULE_VERSION = 1
+RULE_VERSION = 2
 
-# --- カップウィズハンドル(オニールの目安を営業日数に置き換え) ---
-CUP_DAYS = (35, 250)            # カップの長さ(約7週〜1年)
-CUP_DEPTH = (12.0, 35.0)        # 左の高値からカップの底までの下落率(%)
-RIGHT_LIP_VS_LEFT = (-8.0, 3.0)  # 右の高値が左の高値に対して何%の位置か
-HANDLE_DAYS = (5, 25)           # 取っ手の長さ(1〜5週)
-HANDLE_DEPTH = (3.0, 15.0)      # 右の高値から取っ手の安値までの下落率(%)
-CUP_PRIOR_RISE_MIN = 25.0       # カップの前の上昇率(%)
-# カップの下側1/3にいた日数の割合の下限。直線的なV字だと約1/3になるため、それより大きくしてU字だけを残す
+# --- カップウィズハンドル(ユーザー提供の解説図「カップウィズハンドル解説(週足)」の条件を日足に置き換え) ---
+CUP_PRIOR_RISE_MIN = 30.0       # カップの前の上昇率(%)
+CUP_DEPTH = (12.0, 33.0)        # 左の高値からカップの底までの下落率(%)
+CUP_DAYS = (65, 130)            # ベースの幅 = 左の高値〜右の高値(3〜6ヶ月)
+CUP_BOTTOM_VOL_DAYS = 10        # 底の前後この日数(1〜2週間)の出来高が、カップ全体の平均より少ない
+RIGHT_LIP_VS_LEFT = (-8.0, 3.0)  # 右の高値が左の高値に対して何%の位置か(図: ほとんどの場合左より安い)
+HANDLE_DAYS = (5, 25)           # 取っ手の長さ(図: 1〜2週間以上。上限は約5週)
+HANDLE_DEPTH = (5.0, 10.0)      # 右の高値から取っ手の安値までの下落率(%)
+HANDLE_MA_DAYS = 50             # 取っ手の間、終値がこの日数の移動平均(10週線)より上
+BREAKOUT_VOL_RATIO = 1.4        # ブレイク日の出来高 ÷ 直前50日の平均出来高(図: 40〜50%以上の急増)
+
+# 以前使っていたが、2026-10 にユーザーの判断で外した条件。True にすると元に戻る
+CUP_REQUIRE_U_SHAPE = False     # 底が中央寄り(20〜80%の位置)で、下側1/3に35%以上の日数とどまる(V字を除外)
 CUP_MIN_LOWER_THIRD = 0.35
+CUP_REQUIRE_HANDLE_UPPER_HALF = False  # 取っ手の安値がカップの上半分にある
 
 # --- フラットベース ---
 FLAT_DAYS = (25, 65)            # ベースの長さ(5〜13週)
@@ -106,33 +112,54 @@ def detect_cup_with_handle(h, l, c, v, t: int) -> dict | None:
     if not (CUP_DEPTH[0] <= depth <= CUP_DEPTH[1]):
         return None
 
-    # V字ではなくU字: 底が中央寄りで、カップの下側1/3に一定期間とどまっている
     cup_len = r - left
-    if not (0.2 <= (bottom - left) / cup_len <= 0.8):
+    if CUP_REQUIRE_U_SHAPE:
+        if not (0.2 <= (bottom - left) / cup_len <= 0.8):
+            return None
+        if (l[left:r + 1] <= B + (L - B) / 3).mean() < CUP_MIN_LOWER_THIRD:
+            return None
+    if CUP_REQUIRE_HANDLE_UPPER_HALF and handle_low < B + (L - B) / 2:
         return None
-    if (l[left:r + 1] <= B + (L - B) / 3).mean() < CUP_MIN_LOWER_THIRD:
-        return None
-    if handle_low < B + (L - B) / 2:
-        return None  # 取っ手はカップの上半分にできる
     rise = _prior_rise(l, left, L)
     if rise is None or rise < CUP_PRIOR_RISE_MIN:
+        return None
+
+    # 底の付近(1〜2週間)は出来高が減っている
+    half = CUP_BOTTOM_VOL_DAYS // 2
+    bottom_vol = _vol_ratio(v, slice(max(left, bottom - half), min(r, bottom + half)), slice(left, r + 1))
+    if not bottom_vol < 1:
+        return None
+    # 取っ手の間は10週線より上で推移し、出来高が減っている
+    if t < HANDLE_MA_DAYS + 1:
+        return None
+    for i in range(r + 1, t + 1):
+        if c[i] < c[i - HANDLE_MA_DAYS + 1:i + 1].mean():
+            return None
+    handle_vol = _vol_ratio(v, slice(r + 1, t), slice(max(0, r - 50), r))
+    if not handle_vol < 1:
         return None
 
     status = _status(c, t, R)
     if status is None:
         return None
-    vol = _vol_ratio(v, slice(r + 1, t), slice(max(0, r - 50), r))
+    breakout_vol = _vol_ratio(v, slice(t, t + 1), slice(max(0, t - 50), t))
+    if status == "breakout" and not breakout_vol >= BREAKOUT_VOL_RATIO:
+        return None  # 出来高を伴わない上抜けはブレイクとみなさない
+    details = [
+        ("カップ", f"{cup_len / 5:.0f}週・深さ{depth:.0f}%"),
+        ("底の出来高", f"{bottom_vol:.2f}倍"),
+        ("取っ手", f"{t - r}日・押し{handle_depth:.0f}%"),
+        ("カップ前の上昇", f"+{rise:.0f}%"),
+    ]
+    if status == "breakout":
+        details.append(("ブレイク日の出来高", f"{breakout_vol:.2f}倍"))
     return {
         "status": status,
         "pivot": float(R),
         "base_start": left,
         "markers": [(left, float(L), "左の高値"), (bottom, float(B), "底"), (r, float(R), "右の高値")],
-        "details": [
-            ("カップ", f"{cup_len / 5:.0f}週・深さ{depth:.0f}%"),
-            ("取っ手", f"{t - r}日・押し{handle_depth:.0f}%"),
-            ("カップ前の上昇", f"+{rise:.0f}%"),
-        ],
-        "vol_dry_ratio": vol,
+        "details": details,
+        "vol_dry_ratio": handle_vol,
     }
 
 
