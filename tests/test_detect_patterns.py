@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 
 import detect_patterns as dp
-from tests.test_chart_patterns import _cup_closes
+from tests.test_chart_patterns import _cup_closes, _cup_ohlv
 
 
 def _stock(closes):
     dates = pd.bdate_range("2025-01-06", periods=len(closes)).strftime("%Y-%m-%d")
-    g = pd.DataFrame({"date": dates, "high": closes * 1.01, "low": closes * 0.99, "close": closes, "volume": 1000.0})
+    h, l, c, v = _cup_ohlv(closes)
+    g = pd.DataFrame({"date": dates, "high": h, "low": l, "close": c, "volume": v})
     return dp.Stock(g)
 
 
