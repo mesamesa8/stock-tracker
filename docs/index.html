@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14161c">
 <title>高値ブレイク板</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -22,6 +22,7 @@
   <button class="tab-btn is-active" id="tabToday" role="tab" aria-selected="true">本日の候補</button>
   <button class="tab-btn" id="tabHistory" role="tab" aria-selected="false">履歴</button>
   <button class="tab-btn" id="tabWatch" role="tab" aria-selected="false">注目</button>
+  <button class="tab-btn" id="tabPickup" role="tab" aria-selected="false">ピックアップ</button>
 </nav>
 
 <div class="toolbar">
@@ -87,6 +88,16 @@
       <li><strong>フラットベース</strong>: 30%以上上昇した後、高値圏で値幅10%以内の横ばいが5週以上続き、出来高が細っている形。ピボットはベースの高値</li>
       <li><strong>VCP</strong>: 上昇トレンド中に、押し目が回を追うごとに浅くなる形(例: 17% → 9% → 5%)。ピボットは最後の押し目の高値</li>
     </ul>
+    <h3 class="sheet-subtitle">決算(前年同期比)と「ピックアップ」タブ</h3>
+    <p>
+      注目タブの各銘柄に、最新の決算短信の<strong>直近四半期(3ヶ月)</strong>の売上高・営業利益の前年同期比を表示します。
+      決算データはJ-Quants(無料版)から取得しているため<strong>約12週間遅れ</strong>で、表示している決算の発表日を併記しています。
+      前年の営業利益が赤字の場合は増益率を計算できないため「黒字転換」と表示します(ピックアップの条件には含めません)。
+    </p>
+    <p>
+      「ピックアップ」タブには、直近2週間(10営業日)に注目タブに出た銘柄のうち、
+      最新の決算が<strong>売上高+10%以上・営業利益+20%以上</strong>(前年同期比)の銘柄を表示します。
+    </p>
     <p class="sheet-note">
       形の判定は計算式による機械的なもので、見落としや誤判定があります。
       監視候補を探すための参考情報であり、売買を勧めるものではありません。
@@ -100,6 +111,6 @@
   </div>
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

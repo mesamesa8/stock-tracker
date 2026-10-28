@@ -60,6 +60,11 @@ jobs:
           JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
         run: python main.py
 
+      - name: Fetch financial statements (J-Quants, 12-week delay)
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+        run: python fetch_financials.py
+
       - name: Run daily screener
         run: python daily_screener.py
 

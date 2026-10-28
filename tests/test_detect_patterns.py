@@ -60,5 +60,32 @@ class FollowupTest(unittest.TestCase):
         self.assertLess(res["pct"], 0)
 
 
+class BuildPickupTest(unittest.TestCase):
+    def test_picks_recent_stocks_with_strong_earnings(self):
+        def item(code, label):
+            return {"code": code, "pattern_label": label, "status": "forming"}
+
+        days = {
+            "2026-10-20": [item("11110", "VCP")],
+            "2026-10-21": [item("11110", "カップウィズハンドル"), item("22220", "VCP")],
+            "2026-10-22": [item("33330", "VCP")],
+        }
+        good = [
+            {"disc_date": "2026-07-30", "cur_per_type": "1Q", "cur_fy_st": "2026-04-01",
+             "cur_fy_en": "2027-03-31", "sales": 120, "op": 15},
+            {"disc_date": "2025-07-30", "cur_per_type": "1Q", "cur_fy_st": "2025-04-01",
+             "cur_fy_en": "2026-03-31", "sales": 100, "op": 10},
+        ]
+        weak = [dict(good[0], sales=105), good[1]]
+        fins = {"11110": good, "22220": weak, "33330": good}
+        picks = dp.build_pickup(days, ["2026-10-21", "2026-10-22"], fins, "2026-10-22")
+        self.assertEqual([p["code"] for p in picks], ["11110", "33330"])
+        # 期間内の出現だけを数え、表示は最後に出たときの判定結果を使う
+        self.assertEqual([a["date"] for a in picks[0]["appearances"]], ["2026-10-21"])
+        self.assertEqual(picks[0]["pattern_label"], "カップウィズハンドル")
+        self.assertEqual(picks[0]["detected_date"], "2026-10-21")
+        self.assertAlmostEqual(picks[0]["fins"]["sales_yoy"], 20.0)
+
+
 if __name__ == "__main__":
     unittest.main()

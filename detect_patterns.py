@@ -8,6 +8,10 @@ Webアプリの「注目」タブ用のJSONを書き出すスクリプト。
   docs/data/patterns.json                   最新日の判定結果
   docs/data/patterns/YYYY-MM-DD.json        直近 HISTORY_DAYS 営業日分の判定結果 + その後の値動き
   docs/data/patterns/index.json             閲覧できる日付の一覧
+  docs/data/pickup.json                     ピックアップ: 直近2週間に注目タブに出て、最新の決算が
+                                            売上高+10%・営業利益+20%以上(前年同期比)の銘柄
+
+各銘柄には、その日までに開示された最新の決算の前年同期比(financials.py)も付ける。
 
 過去の日付の判定は、その日までのデータだけで行う(後から分かった値動きは使わない)。
 一度作った日付のファイルは判定結果を使い回し、「その後の値動き」だけを毎日更新する。
@@ -31,8 +35,10 @@ import pandas as pd
 from analyze_new_highs import DB_PATH
 from build_web_data import WEB_DATA_DIR, safe_num
 from chart_patterns import PATTERNS, RULE_VERSION
+from financials import OP_YOY_MIN, SALES_YOY_MIN, load_fins, quarterly_yoy
 
 HISTORY_DAYS = 60              # 過去何営業日分の判定結果を残すか
+PICKUP_DAYS = 10               # ピックアップ: 直近この営業日数(2週間)に注目タブに出た銘柄が対象
 LOOKBACK_CALENDAR_DAYS = 650   # 読み込む期間(最も古い判定日でも、200日線とカップの長さに足りる分)
 MAX_DIST_TO_PIVOT_PCT = 5.0    # ピボットからこれ以上離れている「形成中」は載せない
 # 上の距離の絞り込みをしない型。カップは取っ手の押し(5〜10%)の条件があるため、2026-10 にユーザーの判断で外した
@@ -171,12 +177,14 @@ def main() -> int:
     conn = sqlite3.connect(args.db)
     stocks, trading_dates = load_stocks(conn)
     names = pd.read_sql("SELECT code, company_name, sector33_name FROM stocks_master", conn).set_index("code")
+    fins = load_fins(conn)
     conn.close()
 
     target_dates = trading_dates[-args.days:]
     latest = target_dates[-1]
     generated_at = datetime.now(timezone.utc).isoformat()
     index_entries = []
+    days_items = {}
     n_detected = 0
     for date in target_dates:
         path = hist_dir / f"{date}.json"
@@ -186,6 +194,9 @@ def main() -> int:
             n_detected += 1
         for item in items:
             item["after"] = followup(item, stocks.get(item["code"]), date)
+            # 決算は毎日少しずつ取得されるため、既存ファイルの分も毎回計算し直す
+            item["fins"] = quarterly_yoy(fins.get(item["code"], []), date)
+        days_items[date] = items
         day = {"date": date, "generated_at": generated_at, "rule_version": RULE_VERSION, "patterns": items}
         write_json(path, day)
         index_entries.append({
@@ -205,10 +216,44 @@ def main() -> int:
     index_entries.sort(key=lambda x: x["date"], reverse=True)
     write_json(hist_dir / "index.json", {"dates": index_entries})
 
+    pickup_dates = target_dates[-PICKUP_DAYS:]
+    picks = build_pickup(days_items, pickup_dates, fins, latest)
+    write_json(out_dir / "pickup.json", {
+        "date": latest,
+        "generated_at": generated_at,
+        "window_start": pickup_dates[0],
+        "criteria": {"sales_yoy_min": SALES_YOY_MIN, "op_yoy_min": OP_YOY_MIN},
+        "fins_latest_disc_date": max((r["disc_date"] for rows in fins.values() for r in rows), default=None),
+        "stocks": picks,
+    })
+
     latest_entry = index_entries[0]
     print(f"{len(target_dates)}日分を出力しました(新たに判定: {n_detected}日分) -> {hist_dir}")
     print(f"最新日 {latest}: {latest_entry['n']}件(本日ブレイク {latest_entry['n_breakout']}件)")
+    print(f"ピックアップ: {len(picks)}銘柄({pickup_dates[0]}〜{latest}に注目タブに出て、好業績の条件を満たす)")
     return 0
+
+
+def build_pickup(days_items: dict[str, list[dict]], dates: list[str], fins: dict, latest: str) -> list[dict]:
+    """dates の期間に注目タブに出た銘柄のうち、最新の決算が好業績の条件を満たすもの。
+
+    1銘柄1件にまとめ、表示には最後に注目タブに出たときの判定結果を使う。
+    """
+    appearances: dict[str, list[dict]] = {}
+    last_item: dict[str, dict] = {}
+    for date in dates:
+        for item in days_items.get(date, []):
+            appearances.setdefault(item["code"], []).append(
+                {"date": date, "pattern_label": item["pattern_label"], "status": item["status"]}
+            )
+            last_item[item["code"]] = {**item, "detected_date": date}
+    picks = []
+    for code, item in last_item.items():
+        f = quarterly_yoy(fins.get(code, []), latest)
+        if f and f["meets"]:
+            picks.append({**item, "fins": f, "appearances": appearances[code]})
+    picks.sort(key=lambda p: (-(p["fins"]["op_yoy"] or 0)))
+    return picks
 
 
 if __name__ == "__main__":

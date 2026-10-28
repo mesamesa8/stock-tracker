@@ -97,3 +97,12 @@ class JQuantsClient:
         戻り値の各要素は 'Code','Date','O','H','L','C','Vo','Va','AdjFactor' 等を含む。
         """
         return self._get_paginated("/equities/bars/daily", {"date": date}, data_key="data")
+
+    def get_fins_summary(self, date: str) -> list[dict]:
+        """
+        指定日に開示された決算短信のサマリーを「全銘柄分」取得する。
+        戻り値の各要素は 'DiscDate','Code','DiscNo','DocType','CurPerType','CurFYSt',
+        'Sales','OP' 等を含む(数値は文字列、未記載は空文字)。
+        無料プランは12週間より前の日付しか取得できない(それより新しい日付は400エラー)。
+        """
+        return self._get_paginated("/fins/summary", {"date": date}, data_key="data")
