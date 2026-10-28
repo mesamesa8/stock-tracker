@@ -60,6 +60,28 @@ def init_db(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (code, date)
         );
 
+        -- 決算短信のサマリー(J-Quants /fins/summary)。売上高・営業利益は期首からの累計値
+        CREATE TABLE IF NOT EXISTS fins_summary (
+            disc_no      TEXT PRIMARY KEY,  -- 開示番号
+            code         TEXT NOT NULL,
+            disc_date    TEXT NOT NULL,     -- 開示日 'YYYY-MM-DD'
+            doc_type     TEXT,              -- 書類種別(FYFinancialStatements_Consolidated_JP 等)
+            cur_per_type TEXT,              -- '1Q' / '2Q' / '3Q' / 'FY'
+            cur_per_st   TEXT,
+            cur_per_en   TEXT,
+            cur_fy_st    TEXT,              -- 当事業年度の開始日
+            cur_fy_en    TEXT,
+            sales        REAL,              -- 売上高(累計)
+            op           REAL               -- 営業利益(累計)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fins_summary_code ON fins_summary(code);
+
+        -- /fins/summary を日付指定で取得済みの日(0件の日も記録し、取り直さない)
+        CREATE TABLE IF NOT EXISTS fins_fetched_dates (
+            date     TEXT PRIMARY KEY,
+            n_rows   INTEGER
+        );
+
         CREATE INDEX IF NOT EXISTS idx_stocks_daily_date ON stocks_daily(date);
         -- 銘柄コードでの検索は主キー(code, date)の索引で足りるため、
         -- 重複していた code 単独の索引は削除する(DBサイズ約16MB削減)。
@@ -125,6 +147,20 @@ def upsert_stocks_master(conn: sqlite3.Connection, rows: list[dict]) -> None:
             company_name=excluded.company_name, market_code=excluded.market_code,
             market_name=excluded.market_name, sector33_name=excluded.sector33_name,
             updated_at=excluded.updated_at
+        """,
+        rows,
+    )
+    conn.commit()
+
+
+def upsert_fins_summary(conn: sqlite3.Connection, rows: list[dict]) -> None:
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO fins_summary
+            (disc_no, code, disc_date, doc_type, cur_per_type, cur_per_st, cur_per_en,
+             cur_fy_st, cur_fy_en, sales, op)
+        VALUES (:disc_no, :code, :disc_date, :doc_type, :cur_per_type, :cur_per_st, :cur_per_en,
+                :cur_fy_st, :cur_fy_en, :sales, :op)
         """,
         rows,
     )

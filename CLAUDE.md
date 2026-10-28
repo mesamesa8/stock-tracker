@@ -20,6 +20,7 @@
   - J-Quants無料プランは12週間(84日)遅延。直近分は yfinance で補完。
 - 分析: `analyze_*.py`、`technical_features.py`、`backtest_rule.py`、`optimize_tp_sl.py`
 - 日次処理: `daily_screener.py`(→ `analysis_output/screening_YYYY-MM-DD.csv`)→ `build_web_data.py`(→ `docs/data/`、直近60日分のみ保持)→ `detect_patterns.py`(判定は `chart_patterns.py`。→ `docs/data/patterns.json` と `docs/data/patterns/`(直近60営業日分)、「注目」タブ用。判定条件を変えたら `chart_patterns.RULE_VERSION` を上げると過去分も作り直される)
+- 決算: `fetch_financials.py`(J-Quants `/fins/summary` を日付ごとに取得 → DB `fins_summary`。無料版は12週間遅れ・1回150日分まで)→ `financials.py`(直近四半期の前年同期比)→ `detect_patterns.py` が各銘柄に付与し、`docs/data/pickup.json`(直近10営業日に注目タブに出て売上+10%・営業益+20%以上)を出力
 - Web: `docs/index.html` / `app.js` / `style.css`(フレームワーク不使用)
 - 自動実行: `.github/workflows/daily_fetch.yml`(毎日 JST 16:00。DBは Release `db-latest` から取得→更新→検証→アップロード、その他は `git add -A .` でコミット)
 - DB保守: `db_maintenance.py`(compact / count / verify)。テストは `py -3.14 -m unittest discover tests`

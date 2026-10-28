@@ -30,12 +30,21 @@ const SORT_OPTIONS_HISTORY = [
 const SORT_OPTIONS_WATCH = [
   { value: "pivot_near", label: "ピボットに近い順" },
   { value: "after_pct_desc", label: "その後の値上がり率順" },
+  { value: "op_yoy_desc", label: "営業利益の伸びが大きい順" },
   { value: "vol_dry_asc", label: "出来高が細っている順" },
   { value: "code_asc", label: "銘柄コード順" },
 ];
 
+const SORT_OPTIONS_PICKUP = [
+  { value: "op_yoy_desc", label: "営業利益の伸びが大きい順" },
+  { value: "sales_yoy_desc", label: "売上高の伸びが大きい順" },
+  { value: "pivot_near", label: "ピボットに近い順" },
+  { value: "code_asc", label: "銘柄コード順" },
+];
+
 const state = {
-  mode: "today", // "today" | "history" | "watch"
+  mode: "today", // "today" | "history" | "watch" | "pickup"
+  pickupData: null,
   patternFilter: "all",
   watchData: null,
   watchIndex: null,
@@ -52,6 +61,7 @@ const els = {
   tabToday: document.getElementById("tabToday"),
   tabHistory: document.getElementById("tabHistory"),
   tabWatch: document.getElementById("tabWatch"),
+  tabPickup: document.getElementById("tabPickup"),
   historyPicker: document.getElementById("historyPicker"),
   patternPicker: document.getElementById("patternPicker"),
   watchDatePicker: document.getElementById("watchDatePicker"),
@@ -76,6 +86,7 @@ function bindEvents() {
   els.tabToday.addEventListener("click", () => switchMode("today"));
   els.tabHistory.addEventListener("click", () => switchMode("history"));
   els.tabWatch.addEventListener("click", () => switchMode("watch"));
+  els.tabPickup.addEventListener("click", () => switchMode("pickup"));
   els.dateSelect.addEventListener("change", (e) => loadHistoryDate(e.target.value));
   els.watchDateSelect.addEventListener("change", (e) => loadWatchDate(e.target.value));
   els.patternSelect.addEventListener("change", (e) => {
@@ -86,6 +97,8 @@ function bindEvents() {
     state.sortBy = e.target.value;
     if (state.mode === "watch") {
       if (state.watchData) renderPatterns(state.watchData);
+    } else if (state.mode === "pickup") {
+      if (state.pickupData) renderPickup(state.pickupData);
     } else if (state.currentData) {
       renderStocks(state.currentData, { showPerformance: state.mode === "history" });
     }
@@ -100,6 +113,7 @@ function bindEvents() {
 function sortOptionsFor(mode) {
   if (mode === "history") return SORT_OPTIONS_HISTORY;
   if (mode === "watch") return SORT_OPTIONS_WATCH;
+  if (mode === "pickup") return SORT_OPTIONS_PICKUP;
   return SORT_OPTIONS_TODAY;
 }
 
@@ -115,7 +129,8 @@ function populateSortOptions(mode) {
 
 async function switchMode(mode) {
   state.mode = mode;
-  for (const [m, btn] of [["today", els.tabToday], ["history", els.tabHistory], ["watch", els.tabWatch]]) {
+  const tabs = [["today", els.tabToday], ["history", els.tabHistory], ["watch", els.tabWatch], ["pickup", els.tabPickup]];
+  for (const [m, btn] of tabs) {
     btn.classList.toggle("is-active", mode === m);
     btn.setAttribute("aria-selected", String(mode === m));
   }
@@ -128,6 +143,8 @@ async function switchMode(mode) {
     await loadToday();
   } else if (mode === "watch") {
     await loadWatch();
+  } else if (mode === "pickup") {
+    await loadPickup();
   } else {
     await ensureHistoryIndex();
   }
@@ -181,6 +198,8 @@ function sortPatterns(items, sortBy) {
       (a.status !== "breakout") - (b.status !== "breakout") ||
       (a.dist_to_pivot_pct ?? 999) - (b.dist_to_pivot_pct ?? 999),
     after_pct_desc: (a, b) => (b.after?.pct ?? -999) - (a.after?.pct ?? -999),
+    op_yoy_desc: (a, b) => (b.fins?.op_yoy ?? -999) - (a.fins?.op_yoy ?? -999),
+    sales_yoy_desc: (a, b) => (b.fins?.sales_yoy ?? -999) - (a.fins?.sales_yoy ?? -999),
     vol_dry_asc: (a, b) => (a.vol_dry_ratio ?? 999) - (b.vol_dry_ratio ?? 999),
     code_asc: (a, b) => String(a.code).localeCompare(String(b.code)) || a.pattern.localeCompare(b.pattern),
   };
@@ -225,6 +244,81 @@ function renderAfterSummary(items) {
   `;
 }
 
+async function loadPickup() {
+  showMessage("読み込み中…");
+  try {
+    state.pickupData = await fetchJson(`${DATA_BASE}/pickup.json`);
+    renderPickup(state.pickupData);
+    setUpdatedAt(state.pickupData);
+  } catch (err) {
+    showMessage("ピックアップのデータがまだありません。夕方以降にもう一度確認してください。");
+  }
+}
+
+function renderPickup(data) {
+  const c = data.criteria || {};
+  const finsDate = data.fins_latest_disc_date ? formatMonthDay(data.fins_latest_disc_date) : "-";
+  const note = `
+    <div class="after-summary">
+      <div class="after-summary-title">${formatMonthDay(data.window_start)}〜${formatMonthDay(data.date)}に注目タブに出た銘柄のうち、最新の決算(直近四半期)が前年同期比で</div>
+      <div class="after-summary-row">
+        <span>売上高 <strong>+${c.sales_yoy_min ?? 10}%以上</strong></span>
+        <span>営業利益 <strong>+${c.op_yoy_min ?? 20}%以上</strong></span>
+      </div>
+      <div class="after-sub">決算はJ-Quants無料版のため約12週間遅れ(現在は${escapeHtml(finsDate)}発表分まで)</div>
+    </div>`;
+  const items = sortPatterns((data.stocks || []).slice(), state.sortBy);
+  if (items.length === 0) {
+    els.listRoot.innerHTML = note + `<p class="state-msg">条件を満たす銘柄はありませんでした。</p>`;
+    return;
+  }
+  els.listRoot.innerHTML =
+    `<p class="sort-status">${items.length}銘柄 ・ 並び順: ${escapeHtml(currentSortLabel())}</p>` +
+    note +
+    items.map(renderPatternCard).join("");
+}
+
+function formatMonthDay(d) {
+  if (!d) return "-";
+  const [, m, day] = d.split("-");
+  return `${Number(m)}/${Number(day)}`;
+}
+
+function formatYoy(v) {
+  if (v == null) return "-";
+  const cls = v > 0 ? "is-up-text" : v < 0 ? "is-down-text" : "";
+  return `<span class="${cls}">${v > 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+}
+
+// 最新の決算(直近四半期)の前年同期比。決算データがない銘柄はその旨を出す
+function renderFinsRow(f) {
+  if (f === undefined) return "";
+  if (!f) {
+    return `<div class="fins-row"><span class="fins-label">決算</span><span class="after-sub">データなし</span></div>`;
+  }
+  const op = f.op_turnaround ? `<span class="is-up-text">黒字転換</span>` : formatYoy(f.op_yoy);
+  return `
+    <div class="fins-row ${f.meets ? "is-good" : ""}">
+      <div class="fins-head">
+        <span class="fins-label">決算 前年同期比</span>
+        ${f.meets ? `<span class="fins-badge">好業績</span>` : ""}
+      </div>
+      <div class="fins-values">
+        <span>売上高 ${formatYoy(f.sales_yoy)}</span>
+        <span>営業利益 ${op}</span>
+      </div>
+      <div class="after-sub">${escapeHtml(f.period)}(${escapeHtml(formatMonthDay(f.disc_date))}発表・直近3ヶ月)</div>
+    </div>`;
+}
+
+function renderAppearances(list) {
+  if (!list || list.length === 0) return "";
+  const text = list
+    .map((a) => `${formatMonthDay(a.date)} ${a.pattern_label}${a.status === "breakout" ? "(ブレイク)" : ""}`)
+    .join("、");
+  return `<div class="appear-row">注目タブに出た日: ${escapeHtml(text)}</div>`;
+}
+
 function renderAfterRow(a) {
   if (!a) return "";
   const pctClass = a.pct == null || Math.abs(a.pct) < 0.05 ? "is-flat" : a.pct > 0 ? "is-up" : "is-down";
@@ -265,7 +359,7 @@ function renderPatternCard(p) {
         </div>
         <div class="pattern-badges">
           <span class="pattern-badge">${escapeHtml(p.pattern_label)}</span>
-          <span class="status-badge ${isBreakout ? "is-breakout" : ""}">${isBreakout ? "当日ブレイク" : "形成中"}</span>
+          <span class="status-badge ${isBreakout ? "is-breakout" : ""}">${p.detected_date ? `${formatMonthDay(p.detected_date)}時点 ` : ""}${isBreakout ? "当日ブレイク" : "形成中"}</span>
         </div>
       </div>
 
@@ -291,6 +385,8 @@ function renderPatternCard(p) {
         <div class="pattern-detail"><span>直近の出来高</span><span>${volLabel}</span></div>
       </div>
 
+      ${renderFinsRow(p.fins)}
+      ${renderAppearances(p.appearances)}
       ${renderAfterRow(p.after)}
     </article>
   `;
@@ -408,7 +504,7 @@ async function loadHistoryDate(dateStr) {
 }
 
 function setUpdatedAt(data) {
-  const label = { today: "最終更新", history: "この一覧の抽出日", watch: "判定日" }[state.mode];
+  const label = { today: "最終更新", history: "この一覧の抽出日", watch: "判定日", pickup: "最終更新" }[state.mode];
   els.updatedAt.textContent = `${label}: ${data.date || "-"}`;
 }
 
