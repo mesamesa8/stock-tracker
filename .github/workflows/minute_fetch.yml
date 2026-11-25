@@ -1,0 +1,72 @@
+name: Minute Data Fetch (Prime, 1m)
+
+# 東証プライム全銘柄の1分足を、平日の大引け後に取得して GitHub Releases に保存する。
+# 保存先: Release タグ「minute-YYYY-MM」(月ごと)に、1日1ファイル minute_YYYY-MM-DD.csv.gz
+# Yahooの1分足は直近7日分まで取れるので、起動が遅れたり失敗した日も7日以内なら次回に自動で埋まる。
+
+on:
+  schedule:
+    # 07:07 UTC = 日本時間 16:07、月〜金(祝日はデータが無いので何も保存せずに終わる)
+    - cron: "7 7 * * 1-5"
+  workflow_dispatch: {}  # 手動実行ボタン
+
+concurrency:
+  group: minute-fetch
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write  # Releaseの作成・アップロードに必要(このワークフローはコミットはしない)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TZ: Asia/Tokyo
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download database (read only, for the Prime stock list)
+        # 銘柄一覧(stocks_master)を読むだけ。DBのアップロードは絶対にしない
+        run: gh release download db-latest --pattern market_data.sqlite3
+
+      - name: List already saved days (this month and last month)
+        run: |
+          : > existing.txt
+          for m in "$(date +%Y-%m)" "$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m)"; do
+            gh release view "minute-$m" --json assets -q '.assets[].name' >> existing.txt 2>/dev/null || true
+          done
+          echo "保存済み: $(wc -l < existing.txt) ファイル"
+
+      - name: Fetch 1-minute bars
+        run: python fetch_minute_yf.py --out-dir minute_out --existing existing.txt
+
+      - name: Upload to monthly Release
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(minute_out/minute_*.csv.gz)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "新しく保存する日はありませんでした"
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            d=$(basename "$f" | sed -E 's/minute_([0-9]{4}-[0-9]{2})-[0-9]{2}\.csv\.gz/\1/')
+            tag="minute-$d"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" --latest=false \
+                --title "1分足データ $d(東証プライム)" \
+                --notes "GitHub Actions(minute_fetch.yml)が平日に自動追加する1分足データです。1日1ファイル(gzip圧縮CSV、日本時間)。"
+            fi
+            gh release upload "$tag" "$f" --clobber
+            echo "アップロード: $tag / $(basename "$f")"
+          done

@@ -23,6 +23,7 @@
 - 決算: `fetch_financials.py`(J-Quants `/fins/summary` を日付ごとに取得 → DB `fins_summary`。無料版は12週間遅れ・1回150日分まで)→ `financials.py`(直近四半期の前年同期比)→ `detect_patterns.py` が各銘柄に付与し、`docs/data/pickup.json`(直近10営業日に注目タブに出て売上+10%・営業益+20%以上)を出力
 - Web: `docs/index.html` / `app.js` / `style.css`(フレームワーク不使用)
 - 自動実行: `.github/workflows/daily_fetch.yml`(毎日 JST 16:00。DBは Release `db-latest` から取得→更新→検証→アップロード、その他は `git add -A .` でコミット)
+- 1分足: `.github/workflows/minute_fetch.yml`(平日 JST 16:07)→ `fetch_minute_yf.py`(yfinance、プライム全銘柄、直近7日分を取得し未保存の日だけ出力)→ Release `minute-YYYY-MM` に `minute_YYYY-MM-DD.csv.gz`(1日1ファイル)。DBは銘柄一覧を読むだけでアップロードしない。手元へは `gh release download minute-2026-11 --pattern "minute_*.csv.gz"`
 - DB保守: `db_maintenance.py`(compact / count / verify)。テストは `py -3.14 -m unittest discover tests`
 - ルール文書: `TRADING_RULE.md` / `HOW_TO_TRADE.md` / `README.md`
 
